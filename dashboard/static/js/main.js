@@ -27,14 +27,14 @@ const chartOption = {
     boundaryGap: false,
     data: [],
     axisLine: { lineStyle: { color: COLORS.AXIS_LINE } },
-    axisLabel: { color: COLORS.RABBITMQ },
+    axisLabel: { color: COLORS.TEXT_WHITE },
   },
   yAxis: {
     type: "value",
     min: 0,
     max: 8,
     splitLine: { lineStyle: { color: COLORS.SPLIT_LINE } },
-    axisLabel: { color: COLORS.RABBITMQ },
+    axisLabel: { color: COLORS.TEXT_WHITE },
   },
   series: [
     {
@@ -76,10 +76,38 @@ const topoOption = {
       data: [
         { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: COLORS.BACKUP } },
         { name: "Recovery", x: 250, y: 50, itemStyle: { color: COLORS.RECOVERY } },
-        { name: "Finance 1", x: 600, y: -60, symbolSize: 30, itemStyle: { color: COLORS.SAFE } },
-        { name: "Finance 2", x: 600, y: 10, symbolSize: 30, itemStyle: { color: COLORS.SAFE } },
-        { name: "Finance 3", x: 600, y: 90, symbolSize: 30, itemStyle: { color: COLORS.SAFE } },
-        { name: "Finance 4", x: 600, y: 160, symbolSize: 30, itemStyle: { color: COLORS.SAFE } },
+        {
+          name: "F1",
+          x: 600,
+          y: -100,
+          symbolSize: 30,
+          itemStyle: { color: COLORS.SAFE },
+          label: { position: "inside", color: "black" },
+        },
+        {
+          name: "F2",
+          x: 600,
+          y: 0,
+          symbolSize: 30,
+          itemStyle: { color: COLORS.SAFE },
+          label: { position: "inside", color: "black" },
+        },
+        {
+          name: "F3",
+          x: 600,
+          y: 100,
+          symbolSize: 30,
+          itemStyle: { color: COLORS.SAFE },
+          label: { position: "inside", color: "black" },
+        },
+        {
+          name: "F4",
+          x: 600,
+          y: 200,
+          symbolSize: 30,
+          itemStyle: { color: COLORS.SAFE },
+          label: { position: "inside", color: "black" },
+        },
         { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: COLORS.RABBITMQ } },
         { name: "Detection", x: 1200, y: 50, itemStyle: { color: COLORS.DETECTION } },
       ],
@@ -93,28 +121,28 @@ const topoOption = {
         // Recovery -> Finance Nodes
         {
           source: "Recovery",
-          target: "Finance 1",
+          target: "F1",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
           lineStyle: { color: COLORS.RECOVERY, curveness: -0.03, type: "dashed", width: 2 },
         },
         {
           source: "Recovery",
-          target: "Finance 2",
+          target: "F2",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
           lineStyle: { color: COLORS.RECOVERY, curveness: -0.03, type: "dashed", width: 2 },
         },
         {
           source: "Recovery",
-          target: "Finance 3",
+          target: "F3",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
           lineStyle: { color: COLORS.RECOVERY, curveness: 0.03, type: "dashed", width: 2 },
         },
         {
           source: "Recovery",
-          target: "Finance 4",
+          target: "F4",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
           lineStyle: { color: COLORS.RECOVERY, curveness: 0.03, type: "dashed", width: 2 },
@@ -122,28 +150,28 @@ const topoOption = {
 
         // Finance Nodes -> RabbitMQ
         {
-          source: "Finance 1",
+          source: "F1",
           target: "RabbitMQ",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
           lineStyle: { color: COLORS.RABBITMQ, curveness: -0.03 },
         },
         {
-          source: "Finance 2",
+          source: "F2",
           target: "RabbitMQ",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
           lineStyle: { color: COLORS.RABBITMQ, curveness: -0.03 },
         },
         {
-          source: "Finance 3",
+          source: "F3",
           target: "RabbitMQ",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
           lineStyle: { color: COLORS.RABBITMQ, curveness: 0.03 },
         },
         {
-          source: "Finance 4",
+          source: "F4",
           target: "RabbitMQ",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
@@ -167,7 +195,81 @@ topologyChart.setOption(topoOption);
 window.addEventListener("resize", function () {
   entropyChart.resize();
   topologyChart.resize();
+  updateGraphics();
 });
+
+// Update graphic elements (buttons) based on chart coordinates
+function updateGraphics() {
+  const graphics = [];
+  const nodes = [
+    { id: 1, y: -100 },
+    { id: 2, y: 0 },
+    { id: 3, y: 100 },
+    { id: 4, y: 200 },
+  ];
+
+  nodes.forEach((node) => {
+    // Attack Button
+    const attackPos = topologyChart.convertToPixel({ seriesIndex: 0 }, [565, node.y + 40]);
+    if (attackPos) {
+      graphics.push({
+        type: "group",
+        position: attackPos,
+        children: [
+          {
+            type: "rect",
+            shape: { x: -30, y: -12.5, width: 60, height: 25 },
+            style: { fill: COLORS.INFECTED, opacity: 0.6 },
+            styleEmphasis: { fill: "#ff1a1a" },
+          },
+          {
+            type: "text",
+            style: {
+              text: "Attack",
+              fill: "#000000",
+              font: "bold 11px sans-serif",
+              textAlign: "center",
+              textVerticalAlign: "middle",
+            },
+            position: [0, 0],
+          },
+        ],
+        onclick: () => triggerAction(`finance${node.id}`, "attack"),
+      });
+    }
+
+    // Normal Button
+    const normalPos = topologyChart.convertToPixel({ seriesIndex: 0 }, [635, node.y + 40]);
+    if (normalPos) {
+      graphics.push({
+        type: "group",
+        position: normalPos,
+        children: [
+          {
+            type: "rect",
+            shape: { x: -30, y: -12.5, width: 60, height: 25 },
+            style: { fill: COLORS.SAFE, opacity: 0.6 },
+            styleEmphasis: { fill: "#00cc00" },
+          },
+          {
+            type: "text",
+            style: {
+              text: "Normal",
+              fill: "#000",
+              font: "bold 11px sans-serif",
+              textAlign: "center",
+              textVerticalAlign: "middle",
+            },
+            position: [0, 0],
+          },
+        ],
+        onclick: () => triggerAction(`finance${node.id}`, "normal"),
+      });
+    }
+  });
+
+  topologyChart.setOption({ graphic: graphics });
+}
 
 // button attack/normal
 async function triggerAction(target, action) {
@@ -245,16 +347,45 @@ async function fetchState() {
           data: [
             { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: COLORS.BACKUP } },
             { name: "Recovery", x: 250, y: 50, itemStyle: { color: COLORS.RECOVERY } },
-            { name: "Finance 1", x: 600, y: -60, symbolSize: 30, itemStyle: { color: getColor(state.finance1) } },
-            { name: "Finance 2", x: 600, y: 10, symbolSize: 30, itemStyle: { color: getColor(state.finance2) } },
-            { name: "Finance 3", x: 600, y: 90, symbolSize: 30, itemStyle: { color: getColor(state.finance3) } },
-            { name: "Finance 4", x: 600, y: 160, symbolSize: 30, itemStyle: { color: getColor(state.finance4) } },
+            {
+              name: "F1",
+              x: 600,
+              y: -100,
+              symbolSize: 30,
+              itemStyle: { color: getColor(state.finance1) },
+              label: { position: "inside", color: "black" },
+            },
+            {
+              name: "F2",
+              x: 600,
+              y: 0,
+              symbolSize: 30,
+              itemStyle: { color: getColor(state.finance2) },
+              label: { position: "inside", color: "black" },
+            },
+            {
+              name: "F3",
+              x: 600,
+              y: 100,
+              symbolSize: 30,
+              itemStyle: { color: getColor(state.finance3) },
+              label: { position: "inside", color: "black" },
+            },
+            {
+              name: "F4",
+              x: 600,
+              y: 200,
+              symbolSize: 30,
+              itemStyle: { color: getColor(state.finance4) },
+              label: { position: "inside", color: "black" },
+            },
             { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: COLORS.RABBITMQ } },
             { name: "Detection", x: 1200, y: 50, itemStyle: { color: COLORS.DETECTION } },
           ],
         },
       ],
     });
+    updateGraphics();
 
     // log
     const eventLogDiv = document.getElementById("event-logs");

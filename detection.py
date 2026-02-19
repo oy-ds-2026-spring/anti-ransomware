@@ -78,7 +78,7 @@ def log_command_lock_down(client_id, timestamp):
 # log which msg I'm processing, for dashboard
 def log_msg_processing(file_path, entropy, event_type):
     timestamp = time.strftime("%H:%M:%S")
-    log_msg = f"[{timestamp}] Analyzing: {os.path.basename(file_path)} | {event_type} | Entropy: {entropy:.2f}"
+    log_msg = f"[{timestamp}] {os.path.basename(file_path)} | {event_type} | Entropy: {entropy:.2f}"
     current_state["processing_logs"].append(log_msg)
     if len(current_state["processing_logs"]) > 50:
         current_state["processing_logs"].pop(0)
@@ -113,7 +113,7 @@ def msg_callback(ch, method, properties, body):
 
         # log current msg
         log_msg_processing(file_path, entropy, event_type)
-        print(f"🔍 Analyzing: {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
+        print(f"Analyzing: {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
 
         if event_type == "LOCK_DOWN":
             status = "Locked"

@@ -4,6 +4,11 @@ import os
 import requests
 
 app = Flask(__name__)
+
+# so index.html is automatically reloaded
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
+
 STATE_FILE = "/logs/system_state.json"
 
 
