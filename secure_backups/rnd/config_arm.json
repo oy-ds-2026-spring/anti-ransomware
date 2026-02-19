@@ -1,0 +1,18 @@
+{
+    "service_name": "station",
+    "version": "1.0.4",
+    "db_host": "22.137.152.159",
+    "features": [
+        "large",
+        "road",
+        "make",
+        "cold",
+        "task",
+        "sure",
+        "and",
+        "sport",
+        "worry",
+        "week"
+    ],
+    "debug_mode": false
+}

@@ -1,0 +1,18 @@
+{
+    "service_name": "moment",
+    "version": "1.0.4",
+    "db_host": "198.135.100.228",
+    "features": [
+        "station",
+        "night",
+        "herself",
+        "travel",
+        "work",
+        "stop",
+        "degree",
+        "country",
+        "production",
+        "capital"
+    ],
+    "debug_mode": false
+}

@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # rabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "15672:15672"  # web management UI (http://localhost:15672)
+      - "5672:5672"    # application connection port
+    networks:
+      - ransom_net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # detection service
+  detection-service:
+    build: .
+    container_name: detection-service
+    command: python detection.py  # pick a script to run
+    volumes:
+      - .:/app  # mount current source code; changes take effect after restart
+      - ./shared_logs:/logs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ransom_net
+
+  # recovery Service
+  recovery-service:
+    build: .
+    container_name: recovery-service
+    command: python recovery.py
+    volumes:
+      - .:/app
+    depends_on:
+      - backup-storage
+    networks:
+      - ransom_net
+
+  # backup storage
+  backup-storage:
+    build: .
+    container_name: backup-storage
+    command: python backup_server.py
+    volumes:
+      - ./secure_backups:/data
+    networks:
+      - ransom_net
+
+  # client: finance
+  client-finance:
+    build: .
+    container_name: client-finance
+    hostname: client-finance
+    command: python client.py
+    environment:
+      - CLIENT_ID=Finance-Dept
+      - MONITOR_DIR=/data
+    volumes:
+      - .:/app
+      - ./simulation_data/finance:/data  # Mount simulated data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ransom_net
+
+  # client: R&D
+  client-rnd:
+    build: .
+    container_name: client-rnd
+    hostname: client-rnd
+    command: python client.py
+    environment:
+      - CLIENT_ID=RnD-Dept
+      - MONITOR_DIR=/data
+    volumes:
+      - .:/app
+      - ./simulation_data/rnd:/data      # Mount simulated data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ransom_net
+
+  # attacker
+  attacker-node:
+    build: .
+    container_name: attacker-node
+    command: python attacker.py
+    ports:
+      - "8080:8080"  # http://localhost:8080
+    volumes:
+      - .:/app
+    networks:
+      - ransom_net
+  
+  # dashboard
+  dashboard-node:
+    build: .
+    container_name: dashboard-node
+    working_dir: /app/dashboard
+    command: python dashboard.py
+    ports:
+      - "8501:8501" 
+    volumes:
+      - .:/app
+      - ./shared_logs:/logs  
+    networks:
+      - ransom_net
+
+networks:
+  ransom_net:
+    driver: bridge
