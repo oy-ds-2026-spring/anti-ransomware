@@ -1,3 +1,20 @@
+const COLORS = {
+  SAFE: "#22dd11",
+  INFECTED: "#f65e5e",
+  LOCKED: "#f5bb4e",
+  BACKUP: "#76bca5",
+  RECOVERY: "#76bca5",
+  RABBITMQ: "#d081d3",
+  DETECTION: "#3b82f6",
+  AXIS_LINE: "#444",
+  TEXT_WHITE: "#fff",
+  SPLIT_LINE: "rgba(255, 255, 255, 0.03)",
+  AREA_SAFE_START: "rgba(0, 255, 0, 0.3)",
+  AREA_SAFE_END: "rgba(0, 255, 0, 0.03)",
+  AREA_CRITICAL_START: "rgba(255, 75, 75, 0.3)",
+  AREA_CRITICAL_END: "rgba(255, 75, 75, 0.03)",
+};
+
 // entropy line graph
 const chartDom = document.getElementById("entropyChart");
 const entropyChart = echarts.init(chartDom);
@@ -9,15 +26,15 @@ const chartOption = {
     type: "category",
     boundaryGap: false,
     data: [],
-    axisLine: { lineStyle: { color: "#444" } },
-    axisLabel: { color: "#aaa" },
+    axisLine: { lineStyle: { color: COLORS.AXIS_LINE } },
+    axisLabel: { color: COLORS.RABBITMQ },
   },
   yAxis: {
     type: "value",
     min: 0,
     max: 8,
-    splitLine: { lineStyle: { color: "rgba(255, 255, 255, 0.1)" } },
-    axisLabel: { color: "#aaa" },
+    splitLine: { lineStyle: { color: COLORS.SPLIT_LINE } },
+    axisLabel: { color: COLORS.RABBITMQ },
   },
   series: [
     {
@@ -25,11 +42,11 @@ const chartOption = {
       type: "line",
       smooth: true,
       symbol: "none",
-      lineStyle: { width: 2, color: "#00FF00" },
+      lineStyle: { width: 2, color: COLORS.SAFE },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: "rgba(0, 255, 0, 0.3)" },
-          { offset: 1, color: "rgba(0, 255, 0, 0.05)" },
+          { offset: 0, color: COLORS.AREA_SAFE_START },
+          { offset: 1, color: COLORS.AREA_SAFE_END },
         ]),
       },
       data: [],
@@ -52,26 +69,26 @@ const topoOption = {
       layout: "none",
       symbolSize: 60,
       roam: false,
-      label: { show: true, position: "bottom", color: "#fff", fontSize: 14, fontWeight: "bold" },
+      label: { show: true, position: "bottom", color: COLORS.TEXT_WHITE, fontSize: 14, fontWeight: "bold" },
       edgeSymbol: ["none", "arrow"],
       edgeSymbolSize: [4, 10],
       // nodes
       data: [
-        { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: "#10b981" } },
-        { name: "Recovery", x: 250, y: 50, itemStyle: { color: "#8b5cf6" } },
-        { name: "Finance 1", x: 600, y: 0, itemStyle: { color: "#00FF00" } },
-        { name: "Finance 2", x: 600, y: 33, itemStyle: { color: "#00FF00" } },
-        { name: "Finance 3", x: 600, y: 66, itemStyle: { color: "#00FF00" } },
-        { name: "Finance 4", x: 600, y: 100, itemStyle: { color: "#00FF00" } },
-        { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: "#e34ce9" }, symbolSize: 75 },
-        { name: "Detection", x: 1200, y: 50, itemStyle: { color: "#3b82f6" } },
+        { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: COLORS.BACKUP } },
+        { name: "Recovery", x: 250, y: 50, itemStyle: { color: COLORS.RECOVERY } },
+        { name: "Finance 1", x: 600, y: -60, symbolSize: 30, itemStyle: { color: COLORS.SAFE } },
+        { name: "Finance 2", x: 600, y: 10, symbolSize: 30, itemStyle: { color: COLORS.SAFE } },
+        { name: "Finance 3", x: 600, y: 90, symbolSize: 30, itemStyle: { color: COLORS.SAFE } },
+        { name: "Finance 4", x: 600, y: 160, symbolSize: 30, itemStyle: { color: COLORS.SAFE } },
+        { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: COLORS.RABBITMQ } },
+        { name: "Detection", x: 1200, y: 50, itemStyle: { color: COLORS.DETECTION } },
       ],
       links: [
         {
           source: "Backup Storage",
           target: "Recovery",
-          label: { show: true, formatter: "Pull Data", color: "#10b981" },
-          lineStyle: { color: "#10b981", width: 2, type: "solid" },
+          label: { show: true, formatter: "Pull Data", color: COLORS.BACKUP },
+          lineStyle: { color: COLORS.BACKUP, width: 2, type: "solid" },
         },
         // Recovery -> Finance Nodes
         {
@@ -79,55 +96,66 @@ const topoOption = {
           target: "Finance 1",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
-          lineStyle: { color: "#8b5cf6", curveness: -0.2, type: "dashed", width: 2 },
+          lineStyle: { color: COLORS.RECOVERY, curveness: -0.03, type: "dashed", width: 2 },
         },
         {
           source: "Recovery",
           target: "Finance 2",
           symbol: ["arrow", "arrow"],
-          lineStyle: { color: "#8b5cf6", curveness: -0.1, type: "dashed", width: 2 },
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RECOVERY, curveness: -0.03, type: "dashed", width: 2 },
         },
         {
           source: "Recovery",
           target: "Finance 3",
           symbol: ["arrow", "arrow"],
-          lineStyle: { color: "#8b5cf6", curveness: 0.1, type: "dashed", width: 2 },
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RECOVERY, curveness: 0.03, type: "dashed", width: 2 },
         },
         {
           source: "Recovery",
           target: "Finance 4",
           symbol: ["arrow", "arrow"],
-          lineStyle: { color: "#8b5cf6", curveness: 0.2, type: "dashed", width: 2 },
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RECOVERY, curveness: 0.03, type: "dashed", width: 2 },
         },
 
         // Finance Nodes -> RabbitMQ
-        { source: "Finance 1", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: -0.2 } },
-        { source: "Finance 2", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: -0.1 } },
-        { source: "Finance 3", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: 0.1 } },
-        { source: "Finance 4", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: 0.2 } },
+        {
+          source: "Finance 1",
+          target: "RabbitMQ",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, curveness: -0.03 },
+        },
+        {
+          source: "Finance 2",
+          target: "RabbitMQ",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, curveness: -0.03 },
+        },
+        {
+          source: "Finance 3",
+          target: "RabbitMQ",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, curveness: 0.03 },
+        },
+        {
+          source: "Finance 4",
+          target: "RabbitMQ",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, curveness: 0.03 },
+        },
 
-        { source: "RabbitMQ", target: "Detection", lineStyle: { color: "#e34ce9", width: 2 } },
-
-        // Detection -> Finance Nodes
         {
-          source: "Detection",
-          target: "Finance 1",
-          lineStyle: { color: "#3b82f6", width: 2, curveness: 0.4, type: "dashed" },
-        },
-        {
-          source: "Detection",
-          target: "Finance 2",
-          lineStyle: { color: "#3b82f6", width: 2, curveness: 0.3, type: "dashed" },
-        },
-        {
-          source: "Detection",
-          target: "Finance 3",
-          lineStyle: { color: "#3b82f6", width: 2, curveness: -0.3, type: "dashed" },
-        },
-        {
-          source: "Detection",
-          target: "Finance 4",
-          lineStyle: { color: "#3b82f6", width: 2, curveness: -0.4, type: "dashed" },
+          source: "RabbitMQ",
+          target: "Detection",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, width: 2 },
         },
       ],
       lineStyle: { opacity: 0.9, width: 2, curveness: 0 },
@@ -192,11 +220,11 @@ async function fetchState() {
         series: [
           {
             data: entropies,
-            lineStyle: { color: isCritical ? "#FF4B4B" : "#00FF00" },
+            lineStyle: { color: isCritical ? COLORS.INFECTED : COLORS.SAFE },
             areaStyle: {
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: isCritical ? "rgba(255, 75, 75, 0.3)" : "rgba(0, 255, 0, 0.3)" },
-                { offset: 1, color: isCritical ? "rgba(255, 75, 75, 0.05)" : "rgba(0, 255, 0, 0.05)" },
+                { offset: 0, color: isCritical ? COLORS.AREA_CRITICAL_START : COLORS.AREA_SAFE_START },
+                { offset: 1, color: isCritical ? COLORS.AREA_CRITICAL_END : COLORS.AREA_SAFE_END },
               ]),
             },
           },
@@ -206,23 +234,23 @@ async function fetchState() {
 
     // topology node color
     const getColor = (status) => {
-      if (status === "Infected") return "#FF4B4B";
-      if (status === "Locked") return "#FFA500";
-      return "#00FF00";
+      if (status === "Infected") return COLORS.INFECTED;
+      if (status === "Locked") return COLORS.LOCKED;
+      return COLORS.SAFE;
     };
 
     topologyChart.setOption({
       series: [
         {
           data: [
-            { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: "#10b981" } },
-            { name: "Recovery", x: 250, y: 50, itemStyle: { color: "#8b5cf6" } },
-            { name: "Finance 1", x: 600, y: 0, itemStyle: { color: getColor(state.finance1) } },
-            { name: "Finance 2", x: 600, y: 33, itemStyle: { color: getColor(state.finance2) } },
-            { name: "Finance 3", x: 600, y: 66, itemStyle: { color: getColor(state.finance3) } },
-            { name: "Finance 4", x: 600, y: 100, itemStyle: { color: getColor(state.finance4) } },
-            { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: "#e34ce9" }, symbolSize: 75 },
-            { name: "Detection", x: 1200, y: 50, itemStyle: { color: "#3b82f6" } },
+            { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: COLORS.BACKUP } },
+            { name: "Recovery", x: 250, y: 50, itemStyle: { color: COLORS.RECOVERY } },
+            { name: "Finance 1", x: 600, y: -60, symbolSize: 30, itemStyle: { color: getColor(state.finance1) } },
+            { name: "Finance 2", x: 600, y: 10, symbolSize: 30, itemStyle: { color: getColor(state.finance2) } },
+            { name: "Finance 3", x: 600, y: 90, symbolSize: 30, itemStyle: { color: getColor(state.finance3) } },
+            { name: "Finance 4", x: 600, y: 160, symbolSize: 30, itemStyle: { color: getColor(state.finance4) } },
+            { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: COLORS.RABBITMQ } },
+            { name: "Detection", x: 1200, y: 50, itemStyle: { color: COLORS.DETECTION } },
           ],
         },
       ],
