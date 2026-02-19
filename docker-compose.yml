@@ -52,36 +52,73 @@ services:
     networks:
       - ransom_net
 
-  # client: finance
-  client-finance:
+  # 4 replications of finance department
+  # client: finance1
+  client-finance1:
     build: .
-    container_name: client-finance
-    hostname: client-finance
+    container_name: client-finance1
+    hostname: client-finance1
     command: python client.py
     environment:
-      - CLIENT_ID=Finance-Dept
+      - CLIENT_ID=finance1
       - MONITOR_DIR=/data
     volumes:
       - .:/app
-      - ./simulation_data/finance:/data  # Mount simulated data
+      - ./simulation_data/finance1:/data  # Mount simulated data
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - ransom_net
 
-  # client: R&D
-  client-rnd:
+  # client: finance2
+  client-finance2:
     build: .
-    container_name: client-rnd
-    hostname: client-rnd
+    container_name: client-finance2
+    hostname: client-finance2
     command: python client.py
     environment:
-      - CLIENT_ID=RnD-Dept
+      - CLIENT_ID=finance2
       - MONITOR_DIR=/data
     volumes:
       - .:/app
-      - ./simulation_data/rnd:/data      # Mount simulated data
+      - ./simulation_data/finance2:/data  # Mount simulated data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ransom_net
+
+  # client: finance3
+  client-finance3:
+    build: .
+    container_name: client-finance3
+    hostname: client-finance3
+    command: python client.py
+    environment:
+      - CLIENT_ID=finance3
+      - MONITOR_DIR=/data
+    volumes:
+      - .:/app
+      - ./simulation_data/finance3:/data  # Mount simulated data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ransom_net
+
+  # client: finance4
+  client-finance4:
+    build: .
+    container_name: client-finance4
+    hostname: client-finance4
+    command: python client.py
+    environment:
+      - CLIENT_ID=finance4
+      - MONITOR_DIR=/data
+    volumes:
+      - .:/app
+      - ./simulation_data/finance4:/data  # Mount simulated data
     depends_on:
       rabbitmq:
         condition: service_healthy

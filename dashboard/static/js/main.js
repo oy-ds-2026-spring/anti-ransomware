@@ -59,8 +59,10 @@ const topoOption = {
       data: [
         { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: "#10b981" } },
         { name: "Recovery", x: 250, y: 50, itemStyle: { color: "#8b5cf6" } },
-        { name: "Finance Dept", x: 600, y: 100, itemStyle: { color: "#00FF00" } },
-        { name: "R&D Dept", x: 600, y: 0, itemStyle: { color: "#00FF00" } },
+        { name: "Finance 1", x: 600, y: 0, itemStyle: { color: "#00FF00" } },
+        { name: "Finance 2", x: 600, y: 33, itemStyle: { color: "#00FF00" } },
+        { name: "Finance 3", x: 600, y: 66, itemStyle: { color: "#00FF00" } },
+        { name: "Finance 4", x: 600, y: 100, itemStyle: { color: "#00FF00" } },
         { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: "#e34ce9" }, symbolSize: 75 },
         { name: "Detection", x: 1200, y: 50, itemStyle: { color: "#3b82f6" } },
       ],
@@ -71,33 +73,60 @@ const topoOption = {
           label: { show: true, formatter: "Pull Data", color: "#10b981" },
           lineStyle: { color: "#10b981", width: 2, type: "solid" },
         },
+        // Recovery -> Finance Nodes
         {
           source: "Recovery",
-          target: "Finance Dept",
+          target: "Finance 1",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
           lineStyle: { color: "#8b5cf6", curveness: -0.2, type: "dashed", width: 2 },
         },
         {
           source: "Recovery",
-          target: "R&D Dept",
+          target: "Finance 2",
           symbol: ["arrow", "arrow"],
-          symbolSize: [10, 10],
+          lineStyle: { color: "#8b5cf6", curveness: -0.1, type: "dashed", width: 2 },
+        },
+        {
+          source: "Recovery",
+          target: "Finance 3",
+          symbol: ["arrow", "arrow"],
+          lineStyle: { color: "#8b5cf6", curveness: 0.1, type: "dashed", width: 2 },
+        },
+        {
+          source: "Recovery",
+          target: "Finance 4",
+          symbol: ["arrow", "arrow"],
           lineStyle: { color: "#8b5cf6", curveness: 0.2, type: "dashed", width: 2 },
         },
 
-        { source: "Finance Dept", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: -0.2 } },
-        { source: "R&D Dept", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: 0.2 } },
+        // Finance Nodes -> RabbitMQ
+        { source: "Finance 1", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: -0.2 } },
+        { source: "Finance 2", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: -0.1 } },
+        { source: "Finance 3", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: 0.1 } },
+        { source: "Finance 4", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: 0.2 } },
+
         { source: "RabbitMQ", target: "Detection", lineStyle: { color: "#e34ce9", width: 2 } },
 
+        // Detection -> Finance Nodes
         {
           source: "Detection",
-          target: "Finance Dept",
+          target: "Finance 1",
           lineStyle: { color: "#3b82f6", width: 2, curveness: 0.4, type: "dashed" },
         },
         {
           source: "Detection",
-          target: "R&D Dept",
+          target: "Finance 2",
+          lineStyle: { color: "#3b82f6", width: 2, curveness: 0.3, type: "dashed" },
+        },
+        {
+          source: "Detection",
+          target: "Finance 3",
+          lineStyle: { color: "#3b82f6", width: 2, curveness: -0.3, type: "dashed" },
+        },
+        {
+          source: "Detection",
+          target: "Finance 4",
           lineStyle: { color: "#3b82f6", width: 2, curveness: -0.4, type: "dashed" },
         },
       ],
@@ -136,20 +165,17 @@ async function fetchState() {
     const response = await fetch("/api/state");
     const state = await response.json();
 
-    // status
-    const finEl = document.getElementById("finance-status");
-    finEl.innerText = state.finance || "Safe";
-    if (state.finance === "Infected") finEl.className = "value status-danger";
-    else if (state.finance === "Locked")
-      finEl.className = "value status-warning"; // lock down
-    else finEl.className = "value status-safe";
-
-    const rndEl = document.getElementById("rnd-status");
-    rndEl.innerText = state.rnd || "Safe";
-    if (state.rnd === "Infected") rndEl.className = "value status-danger";
-    else if (state.rnd === "Locked")
-      rndEl.className = "value status-warning"; // lock down
-    else rndEl.className = "value status-safe";
+    // status for Finance 1-4
+    for (let i = 1; i <= 4; i++) {
+      const el = document.getElementById(`finance${i}-status`);
+      if (el) {
+        const val = state[`finance${i}`] || "Safe";
+        el.innerText = val;
+        if (val === "Infected") el.className = "value status-danger";
+        else if (val === "Locked") el.className = "value status-warning";
+        else el.className = "value status-safe";
+      }
+    }
 
     const currentEntropy = state.last_entropy || 0.0;
     const entEl = document.getElementById("entropy-value");
@@ -179,13 +205,11 @@ async function fetchState() {
     }
 
     // topology node color
-    let financeColor = "#00FF00";
-    if (state.finance === "Infected") financeColor = "#FF4B4B";
-    else if (state.finance === "Locked") financeColor = "#FFA500"; // lock down
-
-    let rndColor = "#00FF00";
-    if (state.rnd === "Infected") rndColor = "#FF4B4B";
-    else if (state.rnd === "Locked") rndColor = "#FFA500"; // lock down
+    const getColor = (status) => {
+      if (status === "Infected") return "#FF4B4B";
+      if (status === "Locked") return "#FFA500";
+      return "#00FF00";
+    };
 
     topologyChart.setOption({
       series: [
@@ -193,8 +217,10 @@ async function fetchState() {
           data: [
             { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: "#10b981" } },
             { name: "Recovery", x: 250, y: 50, itemStyle: { color: "#8b5cf6" } },
-            { name: "Finance Dept", x: 600, y: 100, itemStyle: { color: financeColor } },
-            { name: "R&D Dept", x: 600, y: 0, itemStyle: { color: rndColor } },
+            { name: "Finance 1", x: 600, y: 0, itemStyle: { color: getColor(state.finance1) } },
+            { name: "Finance 2", x: 600, y: 33, itemStyle: { color: getColor(state.finance2) } },
+            { name: "Finance 3", x: 600, y: 66, itemStyle: { color: getColor(state.finance3) } },
+            { name: "Finance 4", x: 600, y: 100, itemStyle: { color: getColor(state.finance4) } },
             { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: "#e34ce9" }, symbolSize: 75 },
             { name: "Detection", x: 1200, y: 50, itemStyle: { color: "#3b82f6" } },
           ],

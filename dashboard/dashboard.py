@@ -25,8 +25,10 @@ def get_state():
     # if no state_file
     return jsonify(
         {
-            "finance": "Safe",
-            "rnd": "Safe",
+            "finance1": "Safe",
+            "finance2": "Safe",
+            "finance3": "Safe",
+            "finance4": "Safe",
             "last_entropy": 0.0,
             "logs": ["System initialized. Waiting for events..."],
             "processing_logs": [],
@@ -38,7 +40,7 @@ def get_state():
 # attack/normal
 @app.route("/api/action/<target>/<action>", methods=["POST"])
 def trigger_action(target, action):
-    # target: finance/rnd
+    # target: finance1/finance2/finance3/finance4
     # action: attack/normal
     url = f"http://client-{target}:5000/{action}"
     try:

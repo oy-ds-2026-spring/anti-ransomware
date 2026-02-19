@@ -11,8 +11,10 @@ ENTROPY_THRESHOLD = 7.5
 # global state, real-time maintained in memory, written to log after update
 # for logging, for Dashboard
 current_state = {
-    "finance": "Safe",
-    "rnd": "Safe",
+    "finance1": "Safe",
+    "finance2": "Safe",
+    "finance3": "Safe",
+    "finance4": "Safe",
     "last_entropy": 0.0,
     "logs": [],  # latest log
     "entropy_history": [],  # for diagram
@@ -36,10 +38,14 @@ def log_client_status(client_id, status, entropy, message):
     global current_state
 
     # 1. department status
-    if "Finance" in client_id:
-        current_state["finance"] = status
-    elif "RnD" in client_id:
-        current_state["rnd"] = status
+    if "finance1" in client_id:
+        current_state["finance1"] = status
+    elif "finance2" in client_id:
+        current_state["finance2"] = status
+    elif "finance3" in client_id:
+        current_state["finance3"] = status
+    elif "finance4" in client_id:
+        current_state["finance4"] = status
 
     # 2. last_entropy
     current_state["last_entropy"] = entropy

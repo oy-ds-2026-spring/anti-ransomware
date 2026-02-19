@@ -15,12 +15,20 @@
   <!-- status -->
   <div class="grid">
     <div class="card">
-      <h3>Finance Department</h3>
-      <div id="finance-status" class="value status-safe">Loading...</div>
+      <h3>Finance 1</h3>
+      <div id="finance1-status" class="value status-safe">Loading...</div>
     </div>
     <div class="card">
-      <h3>R&D Department</h3>
-      <div id="rnd-status" class="value status-safe">Loading...</div>
+      <h3>Finance 2</h3>
+      <div id="finance2-status" class="value status-safe">Loading...</div>
+    </div>
+    <div class="card">
+      <h3>Finance 3</h3>
+      <div id="finance3-status" class="value status-safe">Loading...</div>
+    </div>
+    <div class="card">
+      <h3>Finance 4</h3>
+      <div id="finance4-status" class="value status-safe">Loading...</div>
     </div>
     <div class="card">
       <h3>Max Entropy Detected</h3>
@@ -36,13 +44,22 @@
     <h3>System Topology & Control Center</h3>
 
     <div class="controls-bar">
-      <span><strong>Finance Dept :</strong></span>
-      <button class="btn btn-attack" onclick="triggerAction('finance', 'attack')">Attack</button>
-      <button class="btn btn-normal" onclick="triggerAction('finance', 'normal')">Normal</button>
-
-      <span style="margin-left: 40px;"><strong>R&D Dept :</strong></span>
-      <button class="btn btn-attack" onclick="triggerAction('rnd', 'attack')">Attack</button>
-      <button class="btn btn-normal" onclick="triggerAction('rnd', 'normal')">Normal</button>
+      <div style="margin-bottom: 10px;">
+        <span><strong>Finance 1:</strong></span>
+        <button class="btn btn-attack" onclick="triggerAction('finance1', 'attack')">Attack</button>
+        <button class="btn btn-normal" onclick="triggerAction('finance1', 'normal')">Normal</button>
+        <span style="margin-left: 20px;"><strong>Finance 2:</strong></span>
+        <button class="btn btn-attack" onclick="triggerAction('finance2', 'attack')">Attack</button>
+        <button class="btn btn-normal" onclick="triggerAction('finance2', 'normal')">Normal</button>
+      </div>
+      <div>
+        <span><strong>Finance 3:</strong></span>
+        <button class="btn btn-attack" onclick="triggerAction('finance3', 'attack')">Attack</button>
+        <button class="btn btn-normal" onclick="triggerAction('finance3', 'normal')">Normal</button>
+        <span style="margin-left: 20px;"><strong>Finance 4:</strong></span>
+        <button class="btn btn-attack" onclick="triggerAction('finance4', 'attack')">Attack</button>
+        <button class="btn btn-normal" onclick="triggerAction('finance4', 'normal')">Normal</button>
+      </div>
     </div>
 
     <div id="topologyChart" style="width: 100%; height: 350px;"></div>
