@@ -5,7 +5,7 @@ import json
 import threading
 import pika
 import random
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from collections import Counter
@@ -221,6 +221,49 @@ def trigger_normal():
             return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "no_files_found"}), 404
+
+
+# param: filename
+# return: file content
+@app.route("/read", methods=["POST"])
+def read_file():
+    data = request.get_json()
+    filename = data.get("filename")
+    if not filename:
+        return jsonify({"error": "Filename is required"}), 400
+
+    filepath = os.path.join(MONITOR_DIR, filename)
+    if not os.path.exists(filepath):
+        return jsonify({"error": "File not found"}), 404
+
+    try:
+        with open(filepath, "r") as f:
+            content = f.read()
+        return jsonify({"status": "success", "content": content})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# param: filename and content to be appended(append only)
+# return: file content after modification
+@app.route("/write", methods=["POST"])
+def write_file():
+    data = request.get_json()
+    filename = data.get("filename")
+    content = data.get("content")
+
+    if not filename or content is None:
+        return jsonify({"error": "Filename and content are required"}), 400
+
+    filepath = os.path.join(MONITOR_DIR, filename)
+    try:
+        with open(filepath, "a") as f:
+            f.write(content)
+        with open(filepath, "r") as f:
+            new_content = f.read()
+        return jsonify({"status": "success", "content": new_content})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":
