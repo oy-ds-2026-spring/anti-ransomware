@@ -8,6 +8,8 @@ services:
     ports:
       - "15672:15672"  # web management UI (http://localhost:15672)
       - "5672:5672"    # application connection port
+    volumes: # disable logging
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
     networks:
       - ransom_net
     healthcheck:
