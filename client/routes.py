@@ -9,7 +9,6 @@ from dataclasses import asdict
 
 import config
 import utils
-import rabbitmq_handler
 from models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
 
 app = Flask(__name__)
@@ -85,6 +84,9 @@ def unlock_system():
     return jsonify({"status": "unlocked"})
 
 
+# snapshot ###########################################
+
+
 # Snapshot Coordination Endpoints
 @app.route("/snapshot/prepare", methods=["POST"])
 def snapshot_prepare():
@@ -115,6 +117,9 @@ def snapshot_data():
             except Exception as e:
                 print(f"[WARNING] Snapshot read failed for {file}: {e}")
     return jsonify(backup_data)
+
+
+# file system remote access ##########################
 
 
 # param: filename
@@ -151,7 +156,7 @@ def create_file():
 
     filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
-        _local_create(req.filename, req.content)
+        utils.local_create(req.filename, req.content)
 
         # broadcast to others via RabbitMQ
         broadcast_sync("CREATE", req.filename, req.content)
@@ -199,7 +204,7 @@ def write_file():
 
     filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
-        new_content = _local_write(req.filename, req.content)
+        new_content = utils.local_write(req.filename, req.content)
 
         # broadcast to others via RabbitMQ
         broadcast_sync("WRITE", req.filename, req.content)
@@ -250,7 +255,7 @@ def delete_file():
         if not os.path.exists(filepath):
             return jsonify(Response(error="File not found").to_dict()), 404
 
-        _local_delete(req.filename)
+        utils.local_delete(req.filename)
 
         # broadcast to others via RabbitMQ
         broadcast_sync("DELETE", req.filename)
