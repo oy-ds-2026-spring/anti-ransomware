@@ -1,4 +1,15 @@
 import os
+import time
+import math
+import json
+import threading
+import pika
+import random
+from flask import Flask, jsonify
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from collections import Counter
+from collections import deque
 import stat
 import time
 import math
@@ -26,11 +37,47 @@ BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
 
+IS_LOCKED_DOWN = False
+
+BAITS = [
+    "!000_admin_passwords.txt",  # forward traverse
+    "~system_config_backup.ini",  # special char/system file
+    "zzz_do_not_delete.dat",  # reverse traverse
+]
+
 FILE_OPERATION_FILE = "/logs/file_operation_log.csv"
 
 IS_LOCKED_DOWN = False
 WRITE_PERMISSION = threading.Event()
 WRITE_PERMISSION.set()  # Initially allowed
+
+NUM_BLOCKS = 4
+BLOCK_SIZE = 4096
+
+HIGH_ENTROPY_EXTENSIONS = {".jpeg", ".gif", ".bmp", ".mp4", ".mp3", ".avi", ".mov", ".7z", ".tar"}
+
+PROPER_HEADS = {
+    ".pdf": b"%PDF",
+    ".png": b"\x89PNG",
+    ".zip": b"PK\x03\x04",
+    ".jpg": b"\xff\xd8\xff",
+    ".rar": b"Rar!\x1a\x07",
+    ".gz": b"\x1f\x8b",
+}
+
+
+# generate some baits file, if these files are modified meaning the file is being attack
+def fishing(monitor_dir):
+    # spread baits
+    print(f"[Info] Bait files deployed at: {monitor_dir}")
+    for bait_name in BAITS:
+        filepath = os.path.join(monitor_dir, bait_name)
+        content = b"ADMIN_ROOT_PASSWORD=Secret2026\nDB_IP=192.168.1.1\n"
+        try:
+            with open(filepath, "wb") as f:
+                f.write(content)
+        except Exception as e:
+            print(f"[Error] Deploy bait file failed, {bait_name}: {e}")
 
 
 # send msg to RabbitMQ
@@ -80,30 +127,154 @@ def calculate_entropy(data):
     return entropy
 
 
+def is_header_modified(filepath, ext):
+    # header of some file types are fixed
+    # check header of specific file type
+    # if the header is not the expected header, the file is modified
+    expected_header = PROPER_HEADS.get(ext)
+    if not expected_header:
+        return False
+
+    try:
+        with open(filepath, "rb") as f:
+            header = f.read(len(expected_header))
+            if header == expected_header:
+                return False
+            else:
+                return True
+    except Exception:
+        return False
+
+
+def read_sampled_data(filepath):
+    # will check 4 blocks of 4096 size of the file
+    # random sample read, check start, mid start, mid end, end
+    # combating intermittent encryption
+    try:
+        file_size = os.path.getsize(filepath)
+        if file_size == 0:
+            return b""
+
+        with open(filepath, "rb") as f:
+            # if file is smaller than sample, read all
+            if file_size <= BLOCK_SIZE * NUM_BLOCKS:
+                return f.read()
+
+            sampled_data = bytearray()
+            region_size = file_size // NUM_BLOCKS
+
+            for i in range(NUM_BLOCKS):
+                # allocate start and end
+                region_start = i * region_size
+                max_offset = max(region_start, region_start + region_size - BLOCK_SIZE)
+
+                # apply random read
+                offset = random.randint(region_start, max_offset)
+
+                f.seek(offset)  # move to random place
+                sampled_data.extend(f.read(BLOCK_SIZE))
+
+            return bytes(sampled_data)
+    except Exception as e:
+        print(f"[Error] Failed to read {filepath} | Error: {e}")
+        return b""
+
+
 class EntropyMonitor(FileSystemEventHandler):
+    def __init__(self):
+        # note the time when the file is modified
+        self.modification_timestamps = deque(maxlen=10)
+        self.VELOCITY_THRESHOLD = 1.0  # sus behavior: 10 modifications in 1s
+        # for size change
+        self.file_metadata = {}
+        self.SIZE_CHANGE_THRESHOLD = 0.3  # sus behavior: 30% change in file size
+
+    def check_modify_velocity(self):
+        if len(self.modification_timestamps) == 10:
+            time_diff = self.modification_timestamps[-1] - self.modification_timestamps[0]
+            if time_diff < self.VELOCITY_THRESHOLD:
+                return True
+        return False
+
+    def check_size_change(self, filepath, current_size):
+        if filepath in self.file_metadata:
+            old_size = self.file_metadata[filepath]["size"]
+            if old_size > 0:
+                change_ratio = abs(current_size - old_size) / old_size
+                if change_ratio >= self.SIZE_CHANGE_THRESHOLD:
+                    return True, change_ratio
+        return False, 0
+
     def _should_ignore(self, filename):
-        return filename.endswith(".locked") or ".tmp" in filename
+        # ignore files that is locked and temp files
+        if filename.endswith(".locked") or ".tmp" in filename:
+            return True
+
+        # ignore high entropy file types
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in HIGH_ENTROPY_EXTENSIONS:
+            return True
+
+        return False
 
     def on_modified(self, event):
+        global IS_LOCKED_DOWN
         # only monitor file
         if IS_LOCKED_DOWN or event.is_directory:
             return  # don't report when lock_down
         filename = event.src_path
+        basename = os.path.basename(filename)
+
+        # filter contaminated file
+        if filename.endswith(".locked") or ".tmp" in filename:
+            return
+
+        if basename in BAITS:
+            print(f"[Warning] Confirmed Attack: Baits File [{basename}] is modified.")
+            IS_LOCKED_DOWN = True
+
+            send_msg(filename, 8.0, "BAIT_TRIGGERED")
+            return
+
+        self.modification_timestamps.append(time.time())
+        if self.check_modify_velocity():
+            print(f"[Warning] Possible Attack: File modify freq exceeding 10 times/sec.")
+            send_msg(filename, 8.0, "VELOCITY_ATTACK")
+            return
+
+        try:
+            current_size = os.path.getsize(filename)
+            is_suspicious_size, ratio = self.check_size_change(filename, current_size)
+            self.file_metadata[filename] = {"size": current_size}
+            if is_suspicious_size:
+                print(f"[Warning] Size Anomaly: {basename} changed by {ratio*100:.1f}%")
+                send_msg(filename, 0, "SIZE_ANOMALY")
+        except OSError:
+            pass
+
+        ext = os.path.splitext(filename)[1].lower()
+        # check headers
+        if ext in PROPER_HEADS:
+            if is_header_modified(filename, ext):
+                # skip entropy calc since this file is confirm modified
+                print(
+                    f"[Warning] Confirmed Attack: Detected {ext} file header is modified: {filename}"
+                )
+                IS_LOCKED_DOWN = True
+                send_msg(filename, 8.0, "MODIFY")  # red flag this file
+            return
 
         if self._should_ignore(filename):
             return
 
-        try:
-            with open(filename, "rb") as f:  # Attempt to open and read the file
-                data = f.read()
-                entropy = calculate_entropy(data)
+        data = read_sampled_data(filename)  # use random sample check
+        if not data:
+            return
 
-                # only report if entropy is high
-                if entropy > 0:
-                    send_msg(filename, entropy, "MODIFY")
-        except Exception as e:
-            # File in use, ignore this error but log for debugging.
-            print(f"[WARNING] Failed to read or process file {filename}: {e}")
+        # only report if entropy is high
+        entropy = calculate_entropy(data)
+        if entropy > 0:
+            send_msg(filename, entropy, "MODIFY")
 
     def on_created(self, event):
         if IS_LOCKED_DOWN or event.is_directory:
@@ -113,24 +284,17 @@ class EntropyMonitor(FileSystemEventHandler):
         if self._should_ignore(filename):
             return
 
-        # For newly created files, calculate entropy.
-        # If the file was just created and not fully written
-        # or initial content has zero entropy, it is not reported.
-        try:
-            # let system complete file writing.
-            time.sleep(0.05)
-            with open(filename, "rb") as f:
-                data = f.read()
-                entropy = calculate_entropy(data)
+        time.sleep(0.05)  # wait for file writing done
 
-                # Only report if entropy is high
-                if entropy > 0:
-                    send_msg(filename, entropy, "CREATE")
-        except FileNotFoundError:
-            # The file might have been deleted or moved immediately after reading.
-            print(f"[WARNING] Created file {filename} disappeared before reading.")
-        except Exception as e:
-            print(f"[WARNING] Failed to read or process newly created file {filename}: {e}")
+        # calculate entropy for newly created files
+        # apply random sample check
+        data = read_sampled_data(filename)
+        if not data:
+            return
+
+        entropy = calculate_entropy(data)
+        if entropy > 0:
+            send_msg(filename, entropy, "CREATE")
 
     def on_deleted(self, event):
         if IS_LOCKED_DOWN or event.is_directory:
@@ -140,8 +304,8 @@ class EntropyMonitor(FileSystemEventHandler):
         if self._should_ignore(filename):
             return
 
-        # For deleted files, entropy cannot be calculated.
-        # Report the deletion event.
+        # entropy cannot be calc on deletion
+        # only report the delete event
         send_msg(filename, 0, "DELETE")
 
 
@@ -373,6 +537,14 @@ def trigger_normal():
             return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "no_files_found"}), 404
+
+
+@app.route("/unlock", methods=["GET", "POST"])
+def unlock_system():
+    global IS_LOCKED_DOWN
+    IS_LOCKED_DOWN = False
+    print("[RECOVERY] System unlocked")
+    return jsonify({"status": "unlocked"})
 
 
 # listen to gRPC for trigger lockdown
@@ -657,7 +829,8 @@ def delete_file():
 
 
 if __name__ == "__main__":
-    print(f"[🍺] Client started on {CLIENT_ID}. Watching {MONITOR_DIR}")
+    print(f"[INFO] Client started on {CLIENT_ID}. Watching {MONITOR_DIR}")
+    fishing(MONITOR_DIR)
     # listen command from detection engine
     threading.Thread(target=lock_down_listener, daemon=True).start()
     threading.Thread(target=serve, daemon=True).start()  # listen sync command from other clients
