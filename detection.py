@@ -126,7 +126,7 @@ def msg_callback(ch, method, properties, body):
         if entropy > ENTROPY_THRESHOLD:
             handle_malware(ch, client_id, file_path, entropy)
         else:
-            # ✅ Scenario B: Normal file modification
+            # Scenario B: Normal file modification
             # If previously 'Infected', and now a low entropy operation is received (possibly a recovered file),
             # the status will automatically revert to 'Safe'.
             status = "Safe"
@@ -134,11 +134,11 @@ def msg_callback(ch, method, properties, body):
                 client_id, status, entropy, f"Normal activity: {os.path.basename(file_path)}"
             )
     except Exception as e:
-        print(f"❌ Error processing message: {e}")
+        print(f"[WARNING] Error processing message: {e}")
 
 
 def main():
-    print("🛡️ Detection Service Starting...")
+    print("Detection Service Starting...")
 
     # 1. connect to rabbitmq
     connection = None
@@ -149,7 +149,7 @@ def main():
                 pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
             )
         except pika.exceptions.AMQPConnectionError:
-            print("⏳ Waiting for RabbitMQ...")
+            print("Waiting for RabbitMQ...")
             time.sleep(5)
 
     channel = connection.channel()
@@ -160,7 +160,7 @@ def main():
     # 3. send commands to the queue `commands`
     channel.queue_declare(queue="commands")
 
-    print("✅ Detection Engine Online. Waiting for entropy streams...")
+    print("[🍺] Detection Engine Online. Waiting for entropy streams...")
 
     # 4. Start analyzing messages
     channel.basic_consume(queue="file_events", on_message_callback=msg_callback, auto_ack=True)

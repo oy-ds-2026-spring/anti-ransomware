@@ -3,6 +3,7 @@ import time
 import math
 import json
 import csv
+import base64
 import threading
 import pika
 import random
@@ -28,6 +29,8 @@ FINANCE_NODES = [
 ]
 
 IS_LOCKED_DOWN = False
+WRITE_PERMISSION = threading.Event()
+WRITE_PERMISSION.set()  # Initially allowed
 
 
 # send msg to RabbitMQ
@@ -273,6 +276,38 @@ class Response:
         return {k: v for k, v in asdict(self).items() if v is not None}
 
 
+# Snapshot Coordination Endpoints
+@app.route("/snapshot/prepare", methods=["POST"])
+def snapshot_prepare():
+    # pause new write operations
+    WRITE_PERMISSION.clear()
+    return jsonify({"status": "ready"})
+
+
+@app.route("/snapshot/commit", methods=["POST"])
+def snapshot_commit():
+    # resume write operations
+    WRITE_PERMISSION.set()
+    return jsonify({"status": "resumed"})
+
+
+@app.route("/snapshot/data", methods=["GET"])
+def snapshot_data():
+    # return all files in MONITOR_DIR encoded in base64
+    backup_data = {}
+    for root, _, files in os.walk(MONITOR_DIR):
+        for file in files:
+            filepath = os.path.join(root, file)
+            rel_path = os.path.relpath(filepath, MONITOR_DIR)
+            try:
+                with open(filepath, "rb") as f:
+                    content = base64.b64encode(f.read()).decode("utf-8")
+                backup_data[rel_path] = content
+            except Exception as e:
+                print(f"[WARNING] Snapshot read failed for {file}: {e}")
+    return jsonify(backup_data)
+
+
 # param: filename
 # return: file content
 @app.route("/read", methods=["POST"])
@@ -298,6 +333,7 @@ def read_file():
 # return: success status
 @app.route("/create", methods=["POST"])
 def create_file():
+    WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     try:
         req = CreateReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -359,6 +395,7 @@ def create_file():
 # return: file content after modification
 @app.route("/write", methods=["POST"])
 def write_file():
+    WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     try:
         req = WriteReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -422,6 +459,7 @@ def write_file():
 # return: success status
 @app.route("/delete", methods=["POST"])
 def delete_file():
+    WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     try:
         req = DeleteReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -480,7 +518,7 @@ def delete_file():
 
 
 if __name__ == "__main__":
-    print(f"✅ Client started on {CLIENT_ID}. Watching {MONITOR_DIR}")
+    print(f"[🍺] Client started on {CLIENT_ID}. Watching {MONITOR_DIR}")
     threading.Thread(target=lock_down_listener, daemon=True).start()
 
     # what to do when file operation monitored
