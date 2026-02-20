@@ -1,6 +1,27 @@
+const COLORS = {
+  SAFE: "#22dd11",
+  INFECTED: "#f65e5e",
+  LOCKED: "#f5bb4e",
+  BACKUP: "#76bca5",
+  RECOVERY: "#76bca5",
+  GATEWAY: "#778beb",
+  RABBITMQ: "#d081d3",
+  DETECTION: "#3b82f6",
+  AXIS_LINE: "#444",
+  TEXT_WHITE: "#fff",
+  SPLIT_LINE: "rgba(255, 255, 255, 0.03)",
+  AREA_SAFE_START: "rgba(0, 255, 0, 0.3)",
+  AREA_SAFE_END: "rgba(0, 255, 0, 0.03)",
+  AREA_CRITICAL_START: "rgba(255, 75, 75, 0.3)",
+  AREA_CRITICAL_END: "rgba(255, 75, 75, 0.03)",
+};
+
+let nodePositions = {};
+let isDragging = false;
+
 // entropy line graph
 const chartDom = document.getElementById("entropyChart");
-const entropyChart = echarts.init(chartDom);
+const entropyChart = echarts.init(chartDom, null, { renderer: "canvas", useDirtyRect: true });
 const chartOption = {
   backgroundColor: "transparent",
   tooltip: { trigger: "axis" },
@@ -9,15 +30,15 @@ const chartOption = {
     type: "category",
     boundaryGap: false,
     data: [],
-    axisLine: { lineStyle: { color: "#444" } },
-    axisLabel: { color: "#aaa" },
+    axisLine: { lineStyle: { color: COLORS.AXIS_LINE } },
+    axisLabel: { color: COLORS.TEXT_WHITE },
   },
   yAxis: {
     type: "value",
     min: 0,
     max: 8,
-    splitLine: { lineStyle: { color: "rgba(255, 255, 255, 0.1)" } },
-    axisLabel: { color: "#aaa" },
+    splitLine: { lineStyle: { color: COLORS.SPLIT_LINE } },
+    axisLabel: { color: COLORS.TEXT_WHITE },
   },
   series: [
     {
@@ -25,11 +46,11 @@ const chartOption = {
       type: "line",
       smooth: true,
       symbol: "none",
-      lineStyle: { width: 2, color: "#00FF00" },
+      lineStyle: { width: 2, color: COLORS.SAFE },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: "rgba(0, 255, 0, 0.3)" },
-          { offset: 1, color: "rgba(0, 255, 0, 0.05)" },
+          { offset: 0, color: COLORS.AREA_SAFE_START },
+          { offset: 1, color: COLORS.AREA_SAFE_END },
         ]),
       },
       data: [],
@@ -40,65 +61,161 @@ entropyChart.setOption(chartOption);
 
 // topology
 const topoDom = document.getElementById("topologyChart");
-const topologyChart = echarts.init(topoDom);
+const topologyChart = echarts.init(topoDom, null, { renderer: "canvas", useDirtyRect: true });
 
 const topoOption = {
   tooltip: {},
-  animationDurationUpdate: 500,
-  animationEasingUpdate: "quinticInOut",
+  animationDurationUpdate: 0,
+  animation: false,
   series: [
     {
       type: "graph",
       layout: "none",
+      draggable: true,
       symbolSize: 60,
       roam: false,
-      label: { show: true, position: "bottom", color: "#fff", fontSize: 14, fontWeight: "bold" },
+      label: { show: true, position: "bottom", color: COLORS.TEXT_WHITE, fontSize: 14, fontWeight: "bold" },
       edgeSymbol: ["none", "arrow"],
       edgeSymbolSize: [4, 10],
       // nodes
       data: [
-        { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: "#10b981" } },
-        { name: "Recovery", x: 250, y: 50, itemStyle: { color: "#8b5cf6" } },
-        { name: "Finance Dept", x: 600, y: 100, itemStyle: { color: "#00FF00" } },
-        { name: "R&D Dept", x: 600, y: 0, itemStyle: { color: "#00FF00" } },
-        { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: "#e34ce9" }, symbolSize: 75 },
-        { name: "Detection", x: 1200, y: 50, itemStyle: { color: "#3b82f6" } },
+        { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: COLORS.BACKUP } },
+        { name: "Recovery", x: 250, y: 50, itemStyle: { color: COLORS.RECOVERY } },
+        { name: "Gateway", x: 450, y: 50, itemStyle: { color: COLORS.GATEWAY } },
+        {
+          name: "F1",
+          x: 600,
+          y: -100,
+          symbolSize: 30,
+          itemStyle: { color: COLORS.SAFE },
+          label: { position: "inside", color: "black" },
+        },
+        {
+          name: "F2",
+          x: 600,
+          y: 0,
+          symbolSize: 30,
+          itemStyle: { color: COLORS.SAFE },
+          label: { position: "inside", color: "black" },
+        },
+        {
+          name: "F3",
+          x: 600,
+          y: 100,
+          symbolSize: 30,
+          itemStyle: { color: COLORS.SAFE },
+          label: { position: "inside", color: "black" },
+        },
+        {
+          name: "F4",
+          x: 600,
+          y: 200,
+          symbolSize: 30,
+          itemStyle: { color: COLORS.SAFE },
+          label: { position: "inside", color: "black" },
+        },
+        { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: COLORS.RABBITMQ } },
+        { name: "Detection", x: 1200, y: 50, itemStyle: { color: COLORS.DETECTION } },
       ],
       links: [
         {
           source: "Backup Storage",
           target: "Recovery",
-          label: { show: true, formatter: "Pull Data", color: "#10b981" },
-          lineStyle: { color: "#10b981", width: 2, type: "solid" },
+          label: { show: true, formatter: "Pull Data", color: COLORS.BACKUP },
+          lineStyle: { color: COLORS.BACKUP, width: 2, type: "solid" },
+        },
+        // Recovery -> Finance Nodes
+        {
+          source: "Recovery",
+          target: "F1",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RECOVERY, curveness: -0.03, type: "dashed", width: 2 },
         },
         {
           source: "Recovery",
-          target: "Finance Dept",
+          target: "F2",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
-          lineStyle: { color: "#8b5cf6", curveness: -0.2, type: "dashed", width: 2 },
+          lineStyle: { color: COLORS.RECOVERY, curveness: -0.03, type: "dashed", width: 2 },
         },
         {
           source: "Recovery",
-          target: "R&D Dept",
+          target: "F3",
           symbol: ["arrow", "arrow"],
           symbolSize: [10, 10],
-          lineStyle: { color: "#8b5cf6", curveness: 0.2, type: "dashed", width: 2 },
-        },
-
-        { source: "Finance Dept", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: -0.2 } },
-        { source: "R&D Dept", target: "RabbitMQ", lineStyle: { color: "#aaa", curveness: 0.2 } },
-        { source: "RabbitMQ", target: "Detection", lineStyle: { color: "#e34ce9", width: 2 } },
-
-        {
-          source: "Detection",
-          target: "Finance Dept",
-          lineStyle: { color: "#3b82f6", width: 2, curveness: 0.4, type: "dashed" },
+          lineStyle: { color: COLORS.RECOVERY, curveness: 0.03, type: "dashed", width: 2 },
         },
         {
-          source: "Detection",
-          target: "R&D Dept",
-          lineStyle: { color: "#3b82f6", width: 2, curveness: -0.4, type: "dashed" },
+          source: "Recovery",
+          target: "F4",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RECOVERY, curveness: 0.03, type: "dashed", width: 2 },
+        },
+
+        // Gateway -> Finance Nodes
+        {
+          source: "Gateway",
+          target: "F1",
+          symbol: ["none", "arrow"],
+          lineStyle: { color: COLORS.GATEWAY, width: 2, type: "solid" },
+        },
+        {
+          source: "Gateway",
+          target: "F2",
+          symbol: ["none", "arrow"],
+          lineStyle: { color: COLORS.GATEWAY, width: 2, type: "dashed" },
+        },
+        {
+          source: "Gateway",
+          target: "F3",
+          symbol: ["none", "arrow"],
+          lineStyle: { color: COLORS.GATEWAY, width: 2, type: "dashed" },
+        },
+        {
+          source: "Gateway",
+          target: "F4",
+          symbol: ["none", "arrow"],
+          lineStyle: { color: COLORS.GATEWAY, width: 2, type: "dashed" },
+        },
+
+        // Finance Nodes -> RabbitMQ
+        {
+          source: "F1",
+          target: "RabbitMQ",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, curveness: -0.03 },
+        },
+        {
+          source: "F2",
+          target: "RabbitMQ",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, curveness: -0.03 },
+        },
+        {
+          source: "F3",
+          target: "RabbitMQ",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, curveness: 0.03 },
+        },
+        {
+          source: "F4",
+          target: "RabbitMQ",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, curveness: 0.03 },
+        },
+
+        {
+          source: "RabbitMQ",
+          target: "Detection",
+          symbol: ["arrow", "arrow"],
+          symbolSize: [10, 10],
+          lineStyle: { color: COLORS.RABBITMQ, width: 2 },
         },
       ],
       lineStyle: { opacity: 0.9, width: 2, curveness: 0 },
@@ -110,7 +227,119 @@ topologyChart.setOption(topoOption);
 window.addEventListener("resize", function () {
   entropyChart.resize();
   topologyChart.resize();
+  updateGraphics();
 });
+
+topologyChart.on("mousedown", function () {
+  isDragging = true;
+});
+
+// Update graphics when drag ends
+topologyChart.on("mouseup", function () {
+  const model = topologyChart.getModel();
+  const series = model.getSeriesByIndex(0);
+  const data = series.getData();
+  data.each(function (idx) {
+    const name = data.getName(idx);
+    const layout = data.getItemLayout(idx);
+    if (layout) {
+      nodePositions[name] = { x: layout[0], y: layout[1] };
+    }
+  });
+
+  // Save positions to server
+  fetch("/api/positions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(nodePositions),
+  }).catch((e) => console.error("Failed to save positions:", e));
+
+  isDragging = false;
+  updateGraphics();
+  fetchState();
+});
+
+// Update graphic elements (buttons) based on chart coordinates
+function updateGraphics() {
+  const graphics = [];
+
+  const currentOption = topologyChart.getOption();
+  const nodes = currentOption && currentOption.series && currentOption.series[0] ? currentOption.series[0].data : [];
+
+  nodes.forEach((node) => {
+    const match = node.name && node.name.match(/^F(\d+)$/);
+    if (match) {
+      const id = match[1];
+
+      let x = node.x;
+      let y = node.y;
+      if (nodePositions[node.name]) {
+        x = nodePositions[node.name].x;
+        y = nodePositions[node.name].y;
+      }
+
+      // Attack Button: x - 35, y + 40
+      const attackPos = topologyChart.convertToPixel({ seriesIndex: 0 }, [x - 35, y + 40]);
+      if (attackPos) {
+        graphics.push({
+          type: "group",
+          position: attackPos,
+          children: [
+            {
+              type: "rect",
+              shape: { x: -30, y: -12.5, width: 60, height: 25 },
+              style: { fill: COLORS.INFECTED, opacity: 0.6 },
+              styleEmphasis: { fill: "#ff1a1a" },
+            },
+            {
+              type: "text",
+              style: {
+                text: "Attack",
+                fill: "#000000",
+                font: "bold 11px sans-serif",
+                textAlign: "center",
+                textVerticalAlign: "middle",
+              },
+              position: [0, 0],
+            },
+          ],
+          onclick: () => triggerAction(`finance${id}`, "attack"),
+        });
+      }
+
+      // Normal Button: x + 35, y + 40
+      const normalPos = topologyChart.convertToPixel({ seriesIndex: 0 }, [x + 35, y + 40]);
+      if (normalPos) {
+        graphics.push({
+          type: "group",
+          position: normalPos,
+          children: [
+            {
+              type: "rect",
+              shape: { x: -30, y: -12.5, width: 60, height: 25 },
+              style: { fill: COLORS.SAFE, opacity: 0.6 },
+              styleEmphasis: { fill: "#00cc00" },
+            },
+            {
+              type: "text",
+              style: {
+                text: "Normal",
+                fill: "#000",
+                font: "bold 11px sans-serif",
+                textAlign: "center",
+                textVerticalAlign: "middle",
+              },
+              position: [0, 0],
+            },
+          ],
+          onclick: () => triggerAction(`finance${id}`, "normal"),
+        });
+      }
+    }
+  });
+
+  topologyChart.setOption({ graphic: graphics });
+}
 
 // button attack/normal
 async function triggerAction(target, action) {
@@ -132,24 +361,26 @@ function formatLog(logStr) {
 }
 
 async function fetchState() {
+  if (isDragging) return;
+
   try {
     const response = await fetch("/api/state");
     const state = await response.json();
 
-    // status
-    const finEl = document.getElementById("finance-status");
-    finEl.innerText = state.finance || "Safe";
-    if (state.finance === "Infected") finEl.className = "value status-danger";
-    else if (state.finance === "Locked")
-      finEl.className = "value status-warning"; // lock down
-    else finEl.className = "value status-safe";
+    // Double check: if dragging started during fetch, abort update to avoid resetting positions
+    if (isDragging) return;
 
-    const rndEl = document.getElementById("rnd-status");
-    rndEl.innerText = state.rnd || "Safe";
-    if (state.rnd === "Infected") rndEl.className = "value status-danger";
-    else if (state.rnd === "Locked")
-      rndEl.className = "value status-warning"; // lock down
-    else rndEl.className = "value status-safe";
+    // status for Finance 1-4
+    for (let i = 1; i <= 4; i++) {
+      const el = document.getElementById(`finance${i}-status`);
+      if (el) {
+        const val = state[`finance${i}`] || "Safe";
+        el.innerText = val;
+        if (val === "Infected") el.className = "value status-danger";
+        else if (val === "Locked") el.className = "value status-warning";
+        else el.className = "value status-safe";
+      }
+    }
 
     const currentEntropy = state.last_entropy || 0.0;
     const entEl = document.getElementById("entropy-value");
@@ -166,11 +397,11 @@ async function fetchState() {
         series: [
           {
             data: entropies,
-            lineStyle: { color: isCritical ? "#FF4B4B" : "#00FF00" },
+            lineStyle: { color: isCritical ? COLORS.INFECTED : COLORS.SAFE },
             areaStyle: {
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: isCritical ? "rgba(255, 75, 75, 0.3)" : "rgba(0, 255, 0, 0.3)" },
-                { offset: 1, color: isCritical ? "rgba(255, 75, 75, 0.05)" : "rgba(0, 255, 0, 0.05)" },
+                { offset: 0, color: isCritical ? COLORS.AREA_CRITICAL_START : COLORS.AREA_SAFE_START },
+                { offset: 1, color: isCritical ? COLORS.AREA_CRITICAL_END : COLORS.AREA_SAFE_END },
               ]),
             },
           },
@@ -179,28 +410,60 @@ async function fetchState() {
     }
 
     // topology node color
-    let financeColor = "#00FF00";
-    if (state.finance === "Infected") financeColor = "#FF4B4B";
-    else if (state.finance === "Locked") financeColor = "#FFA500"; // lock down
+    const getColor = (status) => {
+      if (status === "Infected") return COLORS.INFECTED;
+      if (status === "Locked") return COLORS.LOCKED;
+      return COLORS.SAFE;
+    };
 
-    let rndColor = "#00FF00";
-    if (state.rnd === "Infected") rndColor = "#FF4B4B";
-    else if (state.rnd === "Locked") rndColor = "#FFA500"; // lock down
+    // Preserve node positions
+    const getPos = (name, defX, defY) => {
+      if (nodePositions[name]) return nodePositions[name];
+      return { x: defX, y: defY };
+    };
 
     topologyChart.setOption({
       series: [
         {
           data: [
-            { name: "Backup Storage", x: 0, y: 50, itemStyle: { color: "#10b981" } },
-            { name: "Recovery", x: 250, y: 50, itemStyle: { color: "#8b5cf6" } },
-            { name: "Finance Dept", x: 600, y: 100, itemStyle: { color: financeColor } },
-            { name: "R&D Dept", x: 600, y: 0, itemStyle: { color: rndColor } },
-            { name: "RabbitMQ", x: 950, y: 50, itemStyle: { color: "#e34ce9" }, symbolSize: 75 },
-            { name: "Detection", x: 1200, y: 50, itemStyle: { color: "#3b82f6" } },
+            { name: "Backup Storage", ...getPos("Backup Storage", 0, 50), itemStyle: { color: COLORS.BACKUP } },
+            { name: "Recovery", ...getPos("Recovery", 250, 50), itemStyle: { color: COLORS.RECOVERY } },
+            { name: "Gateway", ...getPos("Gateway", 450, 50), itemStyle: { color: COLORS.GATEWAY } },
+            {
+              name: "F1",
+              ...getPos("F1", 600, -100),
+              symbolSize: 30,
+              itemStyle: { color: getColor(state.finance1) },
+              label: { position: "inside", color: "black" },
+            },
+            {
+              name: "F2",
+              ...getPos("F2", 600, 0),
+              symbolSize: 30,
+              itemStyle: { color: getColor(state.finance2) },
+              label: { position: "inside", color: "black" },
+            },
+            {
+              name: "F3",
+              ...getPos("F3", 600, 100),
+              symbolSize: 30,
+              itemStyle: { color: getColor(state.finance3) },
+              label: { position: "inside", color: "black" },
+            },
+            {
+              name: "F4",
+              ...getPos("F4", 600, 200),
+              symbolSize: 30,
+              itemStyle: { color: getColor(state.finance4) },
+              label: { position: "inside", color: "black" },
+            },
+            { name: "RabbitMQ", ...getPos("RabbitMQ", 950, 50), itemStyle: { color: COLORS.RABBITMQ } },
+            { name: "Detection", ...getPos("Detection", 1200, 50), itemStyle: { color: COLORS.DETECTION } },
           ],
         },
       ],
     });
+    updateGraphics();
 
     // log
     const eventLogDiv = document.getElementById("event-logs");
@@ -216,5 +479,18 @@ async function fetchState() {
   }
 }
 
-setInterval(fetchState, 1000);
-fetchState();
+async function init() {
+  try {
+    const res = await fetch("/api/positions");
+    if (res.ok) {
+      const data = await res.json();
+      if (data) nodePositions = data;
+    }
+  } catch (e) {
+    console.error("Failed to load positions:", e);
+  }
+  fetchState();
+  setInterval(fetchState, 1000);
+}
+
+init();

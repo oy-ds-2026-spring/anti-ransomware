@@ -3,27 +3,35 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Ransomware Defense Center</title>
+  <title>Ransomware Defense System</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
 <body>
 
-  <h1>Ransomware Defense System</h1>
+  <!-- <h1>Ransomware Defense System</h1> -->
 
-  <!-- status -->
+  <!-- status panel -->
   <div class="grid">
     <div class="card">
-      <h3>Finance Department</h3>
-      <div id="finance-status" class="value status-safe">Loading...</div>
+      <h3>Finance 1</h3>
+      <div id="finance1-status" class="value status-safe">Loading...</div>
     </div>
     <div class="card">
-      <h3>R&D Department</h3>
-      <div id="rnd-status" class="value status-safe">Loading...</div>
+      <h3>Finance 2</h3>
+      <div id="finance2-status" class="value status-safe">Loading...</div>
     </div>
     <div class="card">
-      <h3>Max Entropy Detected</h3>
+      <h3>Finance 3</h3>
+      <div id="finance3-status" class="value status-safe">Loading...</div>
+    </div>
+    <div class="card">
+      <h3>Finance 4</h3>
+      <div id="finance4-status" class="value status-safe">Loading...</div>
+    </div>
+    <div class="card">
+      <h3>Max Entropy</h3>
       <div id="entropy-value" class="value">0.00</div>
     </div>
     <div class="card">
@@ -33,19 +41,8 @@
   </div>
 
   <div class="topology-panel">
-    <h3>System Topology & Control Center</h3>
-
-    <div class="controls-bar">
-      <span><strong>Finance Dept :</strong></span>
-      <button class="btn btn-attack" onclick="triggerAction('finance', 'attack')">Attack</button>
-      <button class="btn btn-normal" onclick="triggerAction('finance', 'normal')">Normal</button>
-
-      <span style="margin-left: 40px;"><strong>R&D Dept :</strong></span>
-      <button class="btn btn-attack" onclick="triggerAction('rnd', 'attack')">Attack</button>
-      <button class="btn btn-normal" onclick="triggerAction('rnd', 'normal')">Normal</button>
-    </div>
-
-    <div id="topologyChart" style="width: 100%; height: 350px;"></div>
+    <!-- <h3>System Topology</h3> -->
+    <div id="topologyChart" style="width: 100%; height: 450px;"></div>
   </div>
 
   <div class="main-panel">
