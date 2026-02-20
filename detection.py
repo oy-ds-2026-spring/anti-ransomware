@@ -3,6 +3,9 @@ import json
 import os
 import time
 import sys
+import grpc
+import lockdown_pb2
+import lockdown_pb2_grpc
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")  # for DNS addressing
 LOG_FILE = "/logs/system_state.json"  # host machine `shared_logs/` -> docker `logs/`
@@ -11,11 +14,13 @@ ENTROPY_THRESHOLD = 7.5
 # global state, real-time maintained in memory, written to log after update
 # for logging, for Dashboard
 current_state = {
-    "finance": "Safe",
-    "rnd": "Safe",
+    "finance1": "Safe",
+    "finance2": "Safe",
+    "finance3": "Safe",
+    "finance4": "Safe",
     "last_entropy": 0.0,
-    "logs": [],  # latest log
-    "entropy_history": [],  # for diagram
+    "logs": [],  
+    "entropy_history": [],  
     "processing_logs": [],
     "issued_commands": [],
 }
@@ -28,7 +33,7 @@ def save_state():
         with open(LOG_FILE, "w") as f:
             json.dump(current_state, f)
     except Exception as e:
-        print(f"⚠️ Dashboard update failed: {e}")
+        print(f"Dashboard update failed: {e}")
 
 
 # compose new log
@@ -79,17 +84,40 @@ def log_msg_processing(file_path, entropy, event_type):
     save_state()
 
 
+# grpc trigger logic
+def trigger_client_lockdown(client_id, threat_id, reason):
+    client_address = f"client-{client_id}:50051"
+    print(f"Sending gRPC lockdown command to {client_address}...")
+
+    with grpc.insecure_channel(client_address) as channel:
+        stub = lockdown_pb2_grpc.LockdownServiceStub(channel)
+        request = lockdown_pb2.LockdownRequest(
+            threat_id=threat_id,
+            timestamp=str(time.time()),
+            reason=reason,
+            targeted_node=client_id
+        )
+        try:
+            # Added a short timeout so the detection engine doesn't hang if a node is down
+            response = stub.TriggerLockdown(request, timeout=3)
+            if response.success:
+                print(f"Successfully triggered lock down on {client_address}")
+            else:
+                print(f"Failed to trigger lock down on {client_address}: {response.status_message}")
+        except grpc.RpcError as e:
+            print(f"gRPC error when contacting {client_address}: {e.details()}")
+
+
 def handle_malware(ch, client_id, file_path, entropy):
     alert_msg = f"MALWARE DETECTED! Entropy {entropy:.2f} on {os.path.basename(file_path)}"
-    print(f"🔴 {alert_msg}")
+    print(f" {alert_msg}")
 
     log_client_status(client_id, "Infected", entropy, alert_msg)
 
     # send lock down command
     timestamp = time.strftime("%H:%M:%S")
-    payload = {"type": "LOCK_DOWN", "client_id": client_id, "timestamp": timestamp}
-    ch.basic_publish(exchange="", routing_key="commands", body=json.dumps(payload))
-    print(f"🔒 [COMMAND] Sent LOCK_DOWN for {client_id}")
+    threat_id = f"RANSOM-{int(time.time())}"
+    trigger_client_lockdown(client_id, threat_id, reason="High entropy threshold breached")
 
     log_command_lock_down(client_id, timestamp)
 
@@ -107,7 +135,7 @@ def msg_callback(ch, method, properties, body):
 
         # log current msg
         log_msg_processing(file_path, entropy, event_type)
-        print(f"🔍 Analyzing: {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
+        print(f"Analyzing: {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
 
         if event_type == "LOCK_DOWN":
             status = "Locked"
@@ -120,7 +148,7 @@ def msg_callback(ch, method, properties, body):
         if entropy > ENTROPY_THRESHOLD:
             handle_malware(ch, client_id, file_path, entropy)
         else:
-            # ✅ Scenario B: Normal file modification
+            # Scenario B: Normal file modification
             # If previously 'Infected', and now a low entropy operation is received (possibly a recovered file),
             # the status will automatically revert to 'Safe'.
             status = "Safe"
@@ -128,11 +156,10 @@ def msg_callback(ch, method, properties, body):
                 client_id, status, entropy, f"Normal activity: {os.path.basename(file_path)}"
             )
     except Exception as e:
-        print(f"❌ Error processing message: {e}")
-
+        print(f"Error processing message: {e}")
 
 def main():
-    print("🛡️ Detection Service Starting...")
+    print("Detection Service Starting...")
 
     # 1. connect to rabbitmq
     connection = None
@@ -143,7 +170,7 @@ def main():
                 pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
             )
         except pika.exceptions.AMQPConnectionError:
-            print("⏳ Waiting for RabbitMQ...")
+            print("Waiting for RabbitMQ...")
             time.sleep(5)
 
     channel = connection.channel()
@@ -152,9 +179,9 @@ def main():
     channel.queue_declare(queue="file_events")
 
     # 3. send commands to the queue `commands`
-    channel.queue_declare(queue="commands")
+    # channel.queue_declare(queue="commands")
 
-    print("✅ Detection Engine Online. Waiting for entropy streams...")
+    print("Detection Engine Online. Waiting for entropy streams...")
 
     # 4. Start analyzing messages
     channel.basic_consume(queue="file_events", on_message_callback=msg_callback, auto_ack=True)

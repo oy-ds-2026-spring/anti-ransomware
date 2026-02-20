@@ -1,3 +1,6 @@
+#   docker-compose up -d          # Start all services
+#   docker-compose down           # Stop all services
+#   docker-compose logs -f        # View logs
 version: '3.8'
 
 services:
@@ -8,6 +11,8 @@ services:
     ports:
       - "15672:15672"  # web management UI (http://localhost:15672)
       - "5672:5672"    # application connection port
+    volumes: # disable logging
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
     networks:
       - ransom_net
     healthcheck:
@@ -37,6 +42,7 @@ services:
     command: python recovery.py
     volumes:
       - .:/app
+      - ./recovery_logs:/logs # file writing log, for further recovery
     depends_on:
       - backup-storage
     networks:
@@ -52,36 +58,93 @@ services:
     networks:
       - ransom_net
 
-  # client: finance
-  client-finance:
+  # 4 replications of finance department
+  # client: finance1
+  client-finance1:
     build: .
-    container_name: client-finance
-    hostname: client-finance
+    container_name: client-finance1
+    hostname: client-finance1
     command: python client.py
+    expose:
+      - "50051"  # gRPC Lockdown port
+      - "4321"
     environment:
-      - CLIENT_ID=Finance-Dept
+      - CLIENT_ID=finance1
       - MONITOR_DIR=/data
+      - PEERS=client-finance2:4321,client-finance3:4321,client-finance4:4321
     volumes:
       - .:/app
-      - ./simulation_data/finance:/data  # Mount simulated data
+      - ./simulation_data/finance1:/data  # Mount simulated data
+      - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - ransom_net
 
-  # client: R&D
-  client-rnd:
+  # client: finance2
+  client-finance2:
     build: .
-    container_name: client-rnd
-    hostname: client-rnd
+    container_name: client-finance2
+    hostname: client-finance2
     command: python client.py
+    expose:
+      - "50051"  # gRPC Lockdown port
+      - "4321"
     environment:
-      - CLIENT_ID=RnD-Dept
+      - CLIENT_ID=finance2
       - MONITOR_DIR=/data
+      - PEERS=client-finance1:4321,client-finance3:4321,client-finance4:4321
     volumes:
       - .:/app
-      - ./simulation_data/rnd:/data      # Mount simulated data
+      - ./simulation_data/finance2:/data  # Mount simulated data
+      - ./shared_logs:/logs  
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ransom_net
+
+  # client: finance3
+  client-finance3:
+    build: .
+    container_name: client-finance3
+    hostname: client-finance3
+    command: python client.py
+    expose:
+      - "50051"  # gRPC Lockdown port
+      - "4321"
+    environment:
+      - CLIENT_ID=finance3
+      - MONITOR_DIR=/data
+      - PEERS=client-finance1:4321,client-finance2:4321,client-finance4:4321
+    volumes:
+      - .:/app
+      - ./simulation_data/finance3:/data  # Mount simulated data
+      - ./shared_logs:/logs  
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ransom_net
+
+  # client: finance4
+  client-finance4:
+    build: .
+    container_name: client-finance4
+    hostname: client-finance4
+    command: python client.py
+    expose:
+      - "50051"  # gRPC Lockdown port
+      - "4321"
+    environment:
+      - CLIENT_ID=finance4
+      - MONITOR_DIR=/data
+      - PEERS=client-finance2:4321,client-finance3:4321,client-finance1:4321
+    volumes:
+      - .:/app
+      - ./simulation_data/finance4:/data  # Mount simulated data
+      - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -89,16 +152,16 @@ services:
       - ransom_net
 
   # attacker
-  attacker-node:
-    build: .
-    container_name: attacker-node
-    command: python attacker.py
-    ports:
-      - "8080:8080"  # http://localhost:8080
-    volumes:
-      - .:/app
-    networks:
-      - ransom_net
+  # attacker-node:
+  #   build: .
+  #   container_name: attacker-node
+  #   command: python attacker.py
+  #   ports:
+  #     - "8080:8080"  # http://localhost:8080
+  #   volumes:
+  #     - .:/app
+  #   networks:
+  #     - ransom_net
   
   # dashboard
   dashboard-node:
@@ -111,6 +174,20 @@ services:
     volumes:
       - .:/app
       - ./shared_logs:/logs  
+    networks:
+      - ransom_net
+
+  # finance-gateway
+  finance-gateway:
+    build: .
+    container_name: finance-gateway
+    command: python gateway.py
+    ports:
+      - "9000:9000"
+    environment:
+      - STORAGE_NODES=client-finance1,client-finance2,client-finance3,client-finance4
+    volumes:
+      - .:/app
     networks:
       - ransom_net
 
