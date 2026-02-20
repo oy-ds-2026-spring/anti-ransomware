@@ -7,6 +7,8 @@ import pika
 import random
 import requests
 from flask import Flask, jsonify, request
+from dataclasses import dataclass, asdict
+from typing import Optional
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from collections import Counter
@@ -51,7 +53,7 @@ def send_msg(file_path, entropy, event_type):
         )  # Add event type to output
         connection.close()
     except Exception as e:
-        print(f"❌ RabbitMQ Error: {e}")
+        print(f"[ERROR] RabbitMQ Error: {e}")
 
 
 def calculate_entropy(data):
@@ -95,7 +97,7 @@ class EntropyMonitor(FileSystemEventHandler):
                     send_msg(filename, entropy, "MODIFY")
         except Exception as e:
             # File in use, ignore this error but log for debugging.
-            print(f"⚠️ Failed to read or process file {filename}: {e}")
+            print(f"[WARNING] Failed to read or process file {filename}: {e}")
 
     def on_created(self, event):
         if IS_LOCKED_DOWN or event.is_directory:
@@ -120,9 +122,9 @@ class EntropyMonitor(FileSystemEventHandler):
                     send_msg(filename, entropy, "CREATE")
         except FileNotFoundError:
             # The file might have been deleted or moved immediately after reading.
-            print(f"⚠️ Created file {filename} disappeared before reading.")
+            print(f"[WARNING] Created file {filename} disappeared before reading.")
         except Exception as e:
-            print(f"⚠️ Failed to read or process newly created file {filename}: {e}")
+            print(f"[WARNING] Failed to read or process newly created file {filename}: {e}")
 
     def on_deleted(self, event):
         if IS_LOCKED_DOWN or event.is_directory:
@@ -154,7 +156,7 @@ def lock_down_listener():
                 msg = json.loads(body)
 
                 IS_LOCKED_DOWN = True
-                print(f"🔒 [LOCK_DOWN] Command received! Isolating {CLIENT_ID}...")
+                print(f"[LOCK_DOWN] Command received! Isolating {CLIENT_ID}...")
                 # report ok
                 send_msg("SYSTEM_ISOLATED", 0, "LOCK_DOWN")
 
@@ -171,7 +173,7 @@ app = Flask(__name__)
 @app.route("/attack", methods=["POST"])
 def trigger_attack():
     def run_encryption():
-        print(f"💀 [RANSOMWARE] Attack started on {CLIENT_ID}...")
+        print(f"[RANSOMWARE] Attack started on {CLIENT_ID}...")
         for root, _, files in os.walk(MONITOR_DIR):
             for file in files:
                 if file.endswith(".locked"):
@@ -223,7 +225,7 @@ def trigger_normal():
         try:
             with open(target_file, "a") as f:
                 f.write("\nhello world")
-            print(f"📝 [NORMAL] Modified {target_file}")
+            print(f"[NORMAL] Modified {target_file}")
             return jsonify({"status": "success", "file": target_file})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
@@ -231,49 +233,69 @@ def trigger_normal():
     return jsonify({"status": "no_files_found"}), 404
 
 
+# requests and responses
+@dataclass
+class ReadReq:
+    filename: str
+
+
+@dataclass
+class WriteReq:
+    filename: str
+    content: str
+    propagated: bool = False
+
+
+@dataclass
+class Response:
+    status: Optional[str] = None
+    content: Optional[str] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+    def to_dict(self):
+        return {k: v for k, v in asdict(self).items() if v is not None}
+
+
 # param: filename
 # return: file content
 @app.route("/read", methods=["POST"])
 def read_file():
-    data = request.get_json()
-    filename = data.get("filename")
-    if not filename:
-        return jsonify({"error": "Filename is required"}), 400
+    try:
+        req = ReadReq(**request.get_json())
+    except (TypeError, AttributeError):
+        return jsonify(Response(error="Filename is required").to_dict()), 400
 
-    filepath = os.path.join(MONITOR_DIR, filename)
+    filepath = os.path.join(MONITOR_DIR, req.filename)
     if not os.path.exists(filepath):
-        return jsonify({"error": "File not found"}), 404
+        return jsonify(Response(error="File not found").to_dict()), 404
 
     try:
         with open(filepath, "r") as f:
             content = f.read()
-        return jsonify({"status": "success", "content": content})
+        return jsonify(Response(status="success", content=content).to_dict())
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify(Response(status="error", message=str(e)).to_dict()), 500
 
 
 # param: filename and content to be appended(append only)
 # return: file content after modification
 @app.route("/write", methods=["POST"])
 def write_file():
-    data = request.get_json()
-    filename = data.get("filename")
-    content = data.get("content")
-    # only original write request should be repost
-    propagated = data.get("propagated", False)
+    try:
+        req = WriteReq(**request.get_json())
+    except (TypeError, AttributeError):
+        return jsonify(Response(error="Filename and content are required").to_dict()), 400
 
-    if not filename or content is None:
-        return jsonify({"error": "Filename and content are required"}), 400
-
-    filepath = os.path.join(MONITOR_DIR, filename)
+    filepath = os.path.join(MONITOR_DIR, req.filename)
     try:
         with open(filepath, "a") as f:
-            f.write(content)
+            f.write(req.content)
         with open(filepath, "r") as f:
             new_content = f.read()
 
         # sync with other 3 nodes
-        if not propagated:
+        if not req.propagated:
             for node in FINANCE_NODES:
                 # skip self
                 if CLIENT_ID in node:
@@ -281,15 +303,17 @@ def write_file():
                 try:
                     requests.post(
                         f"http://{node}:5000/write",
-                        json={"filename": filename, "content": content, "propagated": True},
+                        json=asdict(
+                            WriteReq(filename=req.filename, content=req.content, propagated=True)
+                        ),
                         timeout=5,
                     )
                 except Exception as e:
                     print(f"⚠️ Propagation failed to {node}: {e}")
 
-        return jsonify({"status": "success", "content": new_content})
+        return jsonify(Response(status="success", content=new_content).to_dict())
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify(Response(status="error", message=str(e)).to_dict()), 500
 
 
 if __name__ == "__main__":
