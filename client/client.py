@@ -33,6 +33,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from collections import Counter
 import config
+from monitor import EntropyMonitor
 
 
 # generate some baits file, if these files are modified meaning the file is being attack
@@ -147,134 +148,6 @@ def read_sampled_data(filepath):
     except Exception as e:
         print(f"[Error] Failed to read {filepath} | Error: {e}")
         return b""
-
-
-class EntropyMonitor(FileSystemEventHandler):
-    def __init__(self):
-        # note the time when the file is modified
-        self.modification_timestamps = deque(maxlen=10)
-        self.VELOCITY_THRESHOLD = 1.0  # sus behavior: 10 modifications in 1s
-        # for size change
-        self.file_metadata = {}
-        self.SIZE_CHANGE_THRESHOLD = 0.3  # sus behavior: 30% change in file size
-
-    def check_modify_velocity(self):
-        if len(self.modification_timestamps) == 10:
-            time_diff = self.modification_timestamps[-1] - self.modification_timestamps[0]
-            if time_diff < self.VELOCITY_THRESHOLD:
-                return True
-        return False
-
-    def check_size_change(self, filepath, current_size):
-        if filepath in self.file_metadata:
-            old_size = self.file_metadata[filepath]["size"]
-            if old_size > 0:
-                change_ratio = abs(current_size - old_size) / old_size
-                if change_ratio >= self.SIZE_CHANGE_THRESHOLD:
-                    return True, change_ratio
-        return False, 0
-
-    def _should_ignore(self, filename):
-        # ignore files that is locked and temp files
-        if filename.endswith(".locked") or ".tmp" in filename:
-            return True
-
-        # ignore high entropy file types
-        ext = os.path.splitext(filename)[1].lower()
-        if ext in config.HIGH_ENTROPY_EXTENSIONS:
-            return True
-
-        return False
-
-    def on_modified(self, event):
-        # only monitor file
-        if config.IS_LOCKED_DOWN or event.is_directory:
-            return  # don't report when lock_down
-        filename = event.src_path
-        basename = os.path.basename(filename)
-
-        # filter contaminated file
-        if filename.endswith(".locked") or ".tmp" in filename:
-            return
-
-        if basename in config.BAITS:
-            print(f"[Warning] Confirmed Attack: Baits File [{basename}] is modified.")
-            config.IS_LOCKED_DOWN = True
-
-            send_msg(filename, 8.0, "BAIT_TRIGGERED")
-            return
-
-        self.modification_timestamps.append(time.time())
-        if self.check_modify_velocity():
-            print(f"[Warning] Possible Attack: File modify freq exceeding 10 times/sec.")
-            send_msg(filename, 8.0, "VELOCITY_ATTACK")
-            return
-
-        try:
-            current_size = os.path.getsize(filename)
-            is_suspicious_size, ratio = self.check_size_change(filename, current_size)
-            self.file_metadata[filename] = {"size": current_size}
-            if is_suspicious_size:
-                print(f"[Warning] Size Anomaly: {basename} changed by {ratio*100:.1f}%")
-                send_msg(filename, 0, "SIZE_ANOMALY")
-        except OSError:
-            pass
-
-        ext = os.path.splitext(filename)[1].lower()
-        # check headers
-        if ext in config.PROPER_HEADS:
-            if is_header_modified(filename, ext):
-                # skip entropy calc since this file is confirm modified
-                print(
-                    f"[Warning] Confirmed Attack: Detected {ext} file header is modified: {filename}"
-                )
-                config.IS_LOCKED_DOWN = True
-                send_msg(filename, 8.0, "MODIFY")  # red flag this file
-            return
-
-        if self._should_ignore(filename):
-            return
-
-        data = read_sampled_data(filename)  # use random sample check
-        if not data:
-            return
-
-        # only report if entropy is high
-        entropy = calculate_entropy(data)
-        if entropy > 0:
-            send_msg(filename, entropy, "MODIFY")
-
-    def on_created(self, event):
-        if config.IS_LOCKED_DOWN or event.is_directory:
-            return
-        filename = event.src_path
-
-        if self._should_ignore(filename):
-            return
-
-        time.sleep(0.05)  # wait for file writing done
-
-        # calculate entropy for newly created files
-        # apply random sample check
-        data = read_sampled_data(filename)
-        if not data:
-            return
-
-        entropy = calculate_entropy(data)
-        if entropy > 0:
-            send_msg(filename, entropy, "CREATE")
-
-    def on_deleted(self, event):
-        if config.IS_LOCKED_DOWN or event.is_directory:
-            return
-        filename = event.src_path
-
-        if self._should_ignore(filename):
-            return
-
-        # entropy cannot be calc on deletion
-        # only report the delete event
-        send_msg(filename, 0, "DELETE")
 
 
 # listen to RabbitMQ
