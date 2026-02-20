@@ -26,9 +26,6 @@ from concurrent import futures
 import lockdown_pb2
 import lockdown_pb2_grpc
 import requests
-from flask import Flask, jsonify, request
-from dataclasses import dataclass, asdict
-from typing import Optional
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from collections import Counter
@@ -359,40 +356,6 @@ def serve():
         f"[{config.CLIENT_ID}] gRPC server started on port 50051, waiting for lockdown commands if needs..."
     )
     server.wait_for_termination()
-
-
-# requests and responses
-@dataclass
-class ReadReq:
-    filename: str
-
-
-@dataclass
-class WriteReq:
-    filename: str
-    content: str
-
-
-@dataclass
-class CreateReq:
-    filename: str
-    content: str = ""
-
-
-@dataclass
-class DeleteReq:
-    filename: str
-
-
-@dataclass
-class Response:
-    status: Optional[str] = None
-    content: Optional[str] = None
-    message: Optional[str] = None
-    error: Optional[str] = None
-
-    def to_dict(self):
-        return {k: v for k, v in asdict(self).items() if v is not None}
 
 
 if __name__ == "__main__":
