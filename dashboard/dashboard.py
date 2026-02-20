@@ -2,6 +2,7 @@ from flask import Flask, jsonify, render_template
 import json
 import os
 import requests
+import logging
 
 app = Flask(__name__)
 
@@ -59,5 +60,9 @@ def trigger_action(target, action):
 
 
 if __name__ == "__main__":
+    # disable default Flask/Werkzeug logging
+    log = logging.getLogger("werkzeug")
+    log.setLevel(logging.ERROR)
+
     print("🌐 Dashboard starting on port 8501...")
     app.run(host="0.0.0.0", port=8501)

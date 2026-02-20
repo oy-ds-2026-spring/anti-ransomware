@@ -151,10 +151,10 @@ services:
     networks:
       - ransom_net
 
-  # gateway
-  gateway:
+  # finance-gateway
+  finance-gateway:
     build: .
-    container_name: gateway
+    container_name: finance-gateway
     command: python gateway.py
     ports:
       - "9000:9000"

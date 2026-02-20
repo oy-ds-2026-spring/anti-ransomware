@@ -23,7 +23,6 @@ class ReadReq:
 class WriteReq:
     filename: str
     content: str
-    propagated: bool = False
 
 
 @dataclass
@@ -38,16 +37,17 @@ class Response:
 
 
 # route to finance1234 node
-@app.route("/read", methods=["GET"])
+@app.route("/finance/read", methods=["POST"])
 def read_op():
-    filename = request.args.get("filename")
-    if not filename:
-        return jsonify(Response(error="filename is required").to_dict()), 400
+    try:
+        req = ReadReq(**request.get_json())
+    except (TypeError, AttributeError):
+        return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     # randomly select one node
     target = random.choice(FINANCE_NODES)
     try:
-        payload = asdict(ReadReq(filename=filename))
+        payload = asdict(req)
         resp = requests.post(f"http://{target}:5000/read", json=payload, timeout=3)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
@@ -55,7 +55,7 @@ def read_op():
 
 
 # route to finance1 node(primary)
-@app.route("/write", methods=["POST"])
+@app.route("/finance/write", methods=["POST"])
 def write_op():
     try:
         req = WriteReq(**request.get_json())
