@@ -151,6 +151,18 @@ services:
     networks:
       - ransom_net
 
+  # gateway
+  gateway:
+    build: .
+    container_name: gateway
+    command: python gateway.py
+    ports:
+      - "9000:9000"
+    volumes:
+      - .:/app
+    networks:
+      - ransom_net
+
 networks:
   ransom_net:
     driver: bridge
