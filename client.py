@@ -2,6 +2,7 @@ import os
 import time
 import math
 import json
+import csv
 import threading
 import pika
 import random
@@ -16,6 +17,8 @@ from collections import Counter
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
+
+FILE_OPERATION_FILE = "/logs/file_operation_log.csv"
 
 FINANCE_NODES = [
     "client-finance1",
@@ -310,6 +313,29 @@ def write_file():
                     )
                 except Exception as e:
                     print(f"⚠️ Propagation failed to {node}: {e}")
+
+            # log locally and notify recovery service
+            try:
+                log_entry = {
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "client_id": CLIENT_ID,
+                    "filename": req.filename,
+                    "appended": req.content,
+                }
+
+                file_exists = os.path.exists(FILE_OPERATION_FILE)
+                with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(
+                        f, fieldnames=["timestamp", "client_id", "filename", "appended"]
+                    )
+                    if not file_exists:
+                        writer.writeheader()
+                    writer.writerow(log_entry)
+
+                # notify recovery service
+                requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
+            except Exception as e:
+                print(f"[WARNING] Logging/Archive failed: {e}")
 
         return jsonify(Response(status="success", content=new_content).to_dict())
     except Exception as e:

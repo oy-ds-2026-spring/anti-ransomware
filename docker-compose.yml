@@ -39,6 +39,7 @@ services:
     command: python recovery.py
     volumes:
       - .:/app
+      - ./recovery_logs:/logs # file writing log, for further recovery
     depends_on:
       - backup-storage
     networks:
