@@ -129,16 +129,16 @@ services:
       - ransom_net
 
   # attacker
-  attacker-node:
-    build: .
-    container_name: attacker-node
-    command: python attacker.py
-    ports:
-      - "8080:8080"  # http://localhost:8080
-    volumes:
-      - .:/app
-    networks:
-      - ransom_net
+  # attacker-node:
+  #   build: .
+  #   container_name: attacker-node
+  #   command: python attacker.py
+  #   ports:
+  #     - "8080:8080"  # http://localhost:8080
+  #   volumes:
+  #     - .:/app
+  #   networks:
+  #     - ransom_net
   
   # dashboard
   dashboard-node:
