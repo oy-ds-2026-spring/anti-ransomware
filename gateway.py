@@ -26,6 +26,11 @@ class WriteReq:
 
 
 @dataclass
+class DeleteReq:
+    filename: str
+
+
+@dataclass
 class Response:
     status: Optional[str] = None
     content: Optional[str] = None
@@ -64,6 +69,21 @@ def write_op():
 
     try:
         resp = requests.post("http://client-finance1:5000/write", json=asdict(req), timeout=10)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify(Response(error=str(e)).to_dict()), 500
+
+
+# route to finance1 node(primary)
+@app.route("/finance/delete", methods=["POST"])
+def delete_op():
+    try:
+        req = DeleteReq(**request.get_json())
+    except (TypeError, AttributeError):
+        return jsonify(Response(error="Invalid request parameters").to_dict()), 400
+
+    try:
+        resp = requests.post("http://client-finance1:5000/delete", json=asdict(req), timeout=10)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500

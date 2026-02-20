@@ -30,7 +30,7 @@ def save_state():
         with open(LOG_FILE, "w") as f:
             json.dump(current_state, f)
     except Exception as e:
-        print(f"⚠️ Dashboard update failed: {e}")
+        print(f"[WARNING] Dashboard update failed: {e}")
 
 
 # compose new log

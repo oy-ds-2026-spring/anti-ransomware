@@ -20,7 +20,7 @@ def archive():
     try:
         file_exists = os.path.exists(FILE_OPERATION_LOG)
         # Ensure fieldnames match the data sent by client
-        fieldnames = ["timestamp", "client_id", "filename", "appended"]
+        fieldnames = ["timestamp", "client_id", "filename", "operation", "appended"]
 
         with open(FILE_OPERATION_LOG, "a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)

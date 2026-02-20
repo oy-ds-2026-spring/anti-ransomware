@@ -68,6 +68,7 @@ services:
     volumes:
       - .:/app
       - ./simulation_data/finance1:/data  # Mount simulated data
+      - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -86,6 +87,7 @@ services:
     volumes:
       - .:/app
       - ./simulation_data/finance2:/data  # Mount simulated data
+      - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -104,6 +106,7 @@ services:
     volumes:
       - .:/app
       - ./simulation_data/finance3:/data  # Mount simulated data
+      - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -122,6 +125,7 @@ services:
     volumes:
       - .:/app
       - ./simulation_data/finance4:/data  # Mount simulated data
+      - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
         condition: service_healthy
