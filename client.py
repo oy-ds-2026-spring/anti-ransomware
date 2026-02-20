@@ -5,6 +5,7 @@ import json
 import threading
 import pika
 import random
+import requests
 from flask import Flask, jsonify, request
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -13,6 +14,13 @@ from collections import Counter
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
+
+FINANCE_NODES = [
+    "client-finance1",
+    "client-finance2",
+    "client-finance3",
+    "client-finance4",
+]
 
 IS_LOCKED_DOWN = False
 
@@ -251,6 +259,8 @@ def write_file():
     data = request.get_json()
     filename = data.get("filename")
     content = data.get("content")
+    # only original write request should be repost
+    propagated = data.get("propagated", False)
 
     if not filename or content is None:
         return jsonify({"error": "Filename and content are required"}), 400
@@ -261,6 +271,22 @@ def write_file():
             f.write(content)
         with open(filepath, "r") as f:
             new_content = f.read()
+
+        # sync with other 3 nodes
+        if not propagated:
+            for node in FINANCE_NODES:
+                # skip self
+                if CLIENT_ID in node:
+                    continue
+                try:
+                    requests.post(
+                        f"http://{node}:5000/write",
+                        json={"filename": filename, "content": content, "propagated": True},
+                        timeout=5,
+                    )
+                except Exception as e:
+                    print(f"⚠️ Propagation failed to {node}: {e}")
+
         return jsonify({"status": "success", "content": new_content})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
