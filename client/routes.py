@@ -5,7 +5,6 @@ import base64
 import csv
 import requests
 from flask import Flask, jsonify, request
-from dataclasses import asdict
 
 import config
 import utils
