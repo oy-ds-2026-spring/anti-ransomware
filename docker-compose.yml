@@ -61,11 +61,16 @@ services:
     environment:
       - CLIENT_ID=Finance-Dept
       - MONITOR_DIR=/data
+      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
       - ./simulation_data/finance:/data  # Mount simulated data
+      - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      rest-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -79,11 +84,16 @@ services:
     environment:
       - CLIENT_ID=RnD-Dept
       - MONITOR_DIR=/data
+      - RESTIC_REPOSITORY=rest:http://rnd:12345678@rest-server:8000/rnd/rnd
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
       - ./simulation_data/rnd:/data      # Mount simulated data
+      - ./secrets/restic_repo_pass_rnd:/run/secrets/restic_repo_pass:ro
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      rest-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -113,6 +123,21 @@ services:
       - ./shared_logs:/logs  
     networks:
       - ransom_net
+
+  # restic repository HTTP backend
+  rest-server:
+    image: restic/rest-server:latest
+    container_name: rest-server
+    command: ["rest-server", "--path", "/data", "--listen", "0.0.0.0:8000", "--private-repos"]
+    volumes:
+      - ./secure_backups/restic_repos:/data
+    networks:
+      - ransom_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/ >/dev/null 2>&1 || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   ransom_net:
