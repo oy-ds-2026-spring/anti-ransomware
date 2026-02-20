@@ -374,6 +374,7 @@ def trigger_normal():
 
     return jsonify({"status": "no_files_found"}), 404
 
+
 # listen to gRPC for trigger lockdown
 class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
     def TriggerLockdown(self, request, context):
@@ -381,9 +382,9 @@ class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
             msg = f"Ignored. Lockdown meant for {request.targeted_node}, I am {CLIENT_ID}."
             print(f"[{CLIENT_ID}]: {msg}")
             return lockdown_pb2.LockdownResponse(success=False, status_message=msg)
-        
+
         print(f"[{CLIENT_ID}] received. threat_id: {request.threat_id}, reason: {request.reason}")
-        
+
         try:
             # simple lockdown, read only
             self.lock_directory_readonly(MONITOR_DIR)
@@ -395,6 +396,7 @@ class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
             error_msg = f"Failed to lock directory: {e}"
             print(f"[{CLIENT_ID}]: {error_msg}")
             return lockdown_pb2.LockdownResponse(success=False, status_message=error_msg)
+
     def lock_directory_readonly(self, path):
         # modify permissions to read-only for all files and directories
         READ_ONLY = stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH
@@ -408,13 +410,17 @@ class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
             for f in files:
                 os.chmod(os.path.join(root, f), READ_ONLY)
 
+
 def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     lockdown_pb2_grpc.add_LockdownServiceServicer_to_server(LockdownServicer(), server)
-    server.add_insecure_port('[::]:50051')
+    server.add_insecure_port("[::]:50051")
     server.start()
-    print(f"[{CLIENT_ID}] gRPC server started on port 50051, waiting for lockdown commands if needs...")
+    print(
+        f"[{CLIENT_ID}] gRPC server started on port 50051, waiting for lockdown commands if needs..."
+    )
     server.wait_for_termination()
+
 
 # requests and responses
 @dataclass
@@ -654,7 +660,7 @@ if __name__ == "__main__":
     print(f"[🍺] Client started on {CLIENT_ID}. Watching {MONITOR_DIR}")
     # listen command from detection engine
     threading.Thread(target=lock_down_listener, daemon=True).start()
-    threading.Thread(target=serve, daemon=True).start()    # listen sync command from other clients
+    threading.Thread(target=serve, daemon=True).start()  # listen sync command from other clients
     threading.Thread(target=sync_listener, daemon=True).start()
 
     # what to do when file operation monitored
