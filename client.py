@@ -250,6 +250,13 @@ class WriteReq:
 
 
 @dataclass
+class CreateReq:
+    filename: str
+    content: str = ""
+    propagated: bool = False
+
+
+@dataclass
 class DeleteReq:
     filename: str
     propagated: bool = False
@@ -283,6 +290,67 @@ def read_file():
         with open(filepath, "r") as f:
             content = f.read()
         return jsonify(Response(status="success", content=content).to_dict())
+    except Exception as e:
+        return jsonify(Response(status="error", message=str(e)).to_dict()), 500
+
+
+# param: filename, content (optional)
+# return: success status
+@app.route("/create", methods=["POST"])
+def create_file():
+    try:
+        req = CreateReq(**request.get_json())
+    except (TypeError, AttributeError):
+        return jsonify(Response(error="Filename is required").to_dict()), 400
+
+    filepath = os.path.join(MONITOR_DIR, req.filename)
+    try:
+        with open(filepath, "w") as f:
+            f.write(req.content)
+
+        # sync with other 3 nodes
+        if not req.propagated:
+            for node in FINANCE_NODES:
+                # skip self
+                if CLIENT_ID in node:
+                    continue
+                try:
+                    requests.post(
+                        f"http://{node}:5000/create",
+                        json=asdict(
+                            CreateReq(filename=req.filename, content=req.content, propagated=True)
+                        ),
+                        timeout=5,
+                    )
+                except Exception as e:
+                    print(f"[WARNING] Propagation failed to {node}: {e}")
+
+            # log locally and notify recovery service
+            try:
+                log_entry = {
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "client_id": CLIENT_ID,
+                    "filename": req.filename,
+                    "operation": "CREATE",
+                    "appended": req.content,
+                }
+
+                file_exists = os.path.exists(FILE_OPERATION_FILE)
+                with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(
+                        f,
+                        fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
+                    )
+                    if not file_exists:
+                        writer.writeheader()
+                    writer.writerow(log_entry)
+
+                # notify recovery service
+                requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
+            except Exception as e:
+                print(f"[WARNING] Logging/Archive failed: {e}")
+
+        return jsonify(Response(status="success", message="File created").to_dict())
     except Exception as e:
         return jsonify(Response(status="error", message=str(e)).to_dict()), 500
 
