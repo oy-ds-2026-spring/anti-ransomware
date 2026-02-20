@@ -32,45 +32,14 @@ from typing import Optional
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from collections import Counter
-
-BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
-MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
-CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
-
-IS_LOCKED_DOWN = False
-
-BAITS = [
-    "!000_admin_passwords.txt",  # forward traverse
-    "~system_config_backup.ini",  # special char/system file
-    "zzz_do_not_delete.dat",  # reverse traverse
-]
-
-FILE_OPERATION_FILE = "/logs/file_operation_log.csv"
-
-IS_LOCKED_DOWN = False
-WRITE_PERMISSION = threading.Event()
-WRITE_PERMISSION.set()  # Initially allowed
-
-NUM_BLOCKS = 4
-BLOCK_SIZE = 4096
-
-HIGH_ENTROPY_EXTENSIONS = {".jpeg", ".gif", ".bmp", ".mp4", ".mp3", ".avi", ".mov", ".7z", ".tar"}
-
-PROPER_HEADS = {
-    ".pdf": b"%PDF",
-    ".png": b"\x89PNG",
-    ".zip": b"PK\x03\x04",
-    ".jpg": b"\xff\xd8\xff",
-    ".rar": b"Rar!\x1a\x07",
-    ".gz": b"\x1f\x8b",
-}
+import config
 
 
 # generate some baits file, if these files are modified meaning the file is being attack
 def fishing(monitor_dir):
     # spread baits
     print(f"[Info] Bait files deployed at: {monitor_dir}")
-    for bait_name in BAITS:
+    for bait_name in config.BAITS:
         filepath = os.path.join(monitor_dir, bait_name)
         content = b"ADMIN_ROOT_PASSWORD=Secret2026\nDB_IP=192.168.1.1\n"
         try:
@@ -86,14 +55,14 @@ def send_msg(file_path, entropy, event_type):
         # init short connection for every sending
         credentials = pika.PlainCredentials("guest", "guest")
         connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
+            pika.ConnectionParameters(host=config.BROKER_HOST, credentials=credentials)
         )
         channel = connection.channel()
 
         channel.queue_declare(queue="file_events")
 
         payload = {
-            "client_id": CLIENT_ID,
+            "client_id": config.CLIENT_ID,
             "file_path": file_path,
             "entropy": entropy,
             "event_type": event_type,
@@ -131,7 +100,7 @@ def is_header_modified(filepath, ext):
     # header of some file types are fixed
     # check header of specific file type
     # if the header is not the expected header, the file is modified
-    expected_header = PROPER_HEADS.get(ext)
+    expected_header = config.PROPER_HEADS.get(ext)
     if not expected_header:
         return False
 
@@ -157,22 +126,22 @@ def read_sampled_data(filepath):
 
         with open(filepath, "rb") as f:
             # if file is smaller than sample, read all
-            if file_size <= BLOCK_SIZE * NUM_BLOCKS:
+            if file_size <= config.BLOCK_SIZE * config.NUM_BLOCKS:
                 return f.read()
 
             sampled_data = bytearray()
-            region_size = file_size // NUM_BLOCKS
+            region_size = file_size // config.NUM_BLOCKS
 
-            for i in range(NUM_BLOCKS):
+            for i in range(config.NUM_BLOCKS):
                 # allocate start and end
                 region_start = i * region_size
-                max_offset = max(region_start, region_start + region_size - BLOCK_SIZE)
+                max_offset = max(region_start, region_start + region_size - config.BLOCK_SIZE)
 
                 # apply random read
                 offset = random.randint(region_start, max_offset)
 
                 f.seek(offset)  # move to random place
-                sampled_data.extend(f.read(BLOCK_SIZE))
+                sampled_data.extend(f.read(config.BLOCK_SIZE))
 
             return bytes(sampled_data)
     except Exception as e:
@@ -212,15 +181,14 @@ class EntropyMonitor(FileSystemEventHandler):
 
         # ignore high entropy file types
         ext = os.path.splitext(filename)[1].lower()
-        if ext in HIGH_ENTROPY_EXTENSIONS:
+        if ext in config.HIGH_ENTROPY_EXTENSIONS:
             return True
 
         return False
 
     def on_modified(self, event):
-        global IS_LOCKED_DOWN
         # only monitor file
-        if IS_LOCKED_DOWN or event.is_directory:
+        if config.IS_LOCKED_DOWN or event.is_directory:
             return  # don't report when lock_down
         filename = event.src_path
         basename = os.path.basename(filename)
@@ -229,9 +197,9 @@ class EntropyMonitor(FileSystemEventHandler):
         if filename.endswith(".locked") or ".tmp" in filename:
             return
 
-        if basename in BAITS:
+        if basename in config.BAITS:
             print(f"[Warning] Confirmed Attack: Baits File [{basename}] is modified.")
-            IS_LOCKED_DOWN = True
+            config.IS_LOCKED_DOWN = True
 
             send_msg(filename, 8.0, "BAIT_TRIGGERED")
             return
@@ -254,13 +222,13 @@ class EntropyMonitor(FileSystemEventHandler):
 
         ext = os.path.splitext(filename)[1].lower()
         # check headers
-        if ext in PROPER_HEADS:
+        if ext in config.PROPER_HEADS:
             if is_header_modified(filename, ext):
                 # skip entropy calc since this file is confirm modified
                 print(
                     f"[Warning] Confirmed Attack: Detected {ext} file header is modified: {filename}"
                 )
-                IS_LOCKED_DOWN = True
+                config.IS_LOCKED_DOWN = True
                 send_msg(filename, 8.0, "MODIFY")  # red flag this file
             return
 
@@ -277,7 +245,7 @@ class EntropyMonitor(FileSystemEventHandler):
             send_msg(filename, entropy, "MODIFY")
 
     def on_created(self, event):
-        if IS_LOCKED_DOWN or event.is_directory:
+        if config.IS_LOCKED_DOWN or event.is_directory:
             return
         filename = event.src_path
 
@@ -297,7 +265,7 @@ class EntropyMonitor(FileSystemEventHandler):
             send_msg(filename, entropy, "CREATE")
 
     def on_deleted(self, event):
-        if IS_LOCKED_DOWN or event.is_directory:
+        if config.IS_LOCKED_DOWN or event.is_directory:
             return
         filename = event.src_path
 
@@ -311,22 +279,20 @@ class EntropyMonitor(FileSystemEventHandler):
 
 # listen to RabbitMQ
 def lock_down_listener():
-    global IS_LOCKED_DOWN
     while True:
         try:
             credentials = pika.PlainCredentials("guest", "guest")
             connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
+                pika.ConnectionParameters(host=config.BROKER_HOST, credentials=credentials)
             )
             channel = connection.channel()
             channel.queue_declare(queue="commands")
 
             def callback(ch, method, properties, body):
-                global IS_LOCKED_DOWN
                 msg = json.loads(body)
 
-                IS_LOCKED_DOWN = True
-                print(f"[LOCK_DOWN] Command received! Isolating {CLIENT_ID}...")
+                config.IS_LOCKED_DOWN = True
+                print(f"[LOCK_DOWN] Command received! Isolating {config.CLIENT_ID}...")
                 # report ok
                 send_msg("SYSTEM_ISOLATED", 0, "LOCK_DOWN")
 
@@ -338,13 +304,13 @@ def lock_down_listener():
 
 # local IO
 def _local_create(filename, content):
-    filepath = os.path.join(MONITOR_DIR, filename)
+    filepath = os.path.join(config.MONITOR_DIR, filename)
     with open(filepath, "w") as f:
         f.write(content)
 
 
 def _local_write(filename, content):
-    filepath = os.path.join(MONITOR_DIR, filename)
+    filepath = os.path.join(config.MONITOR_DIR, filename)
     with open(filepath, "a") as f:
         f.write(content)
     with open(filepath, "r") as f:
@@ -352,7 +318,7 @@ def _local_write(filename, content):
 
 
 def _local_delete(filename):
-    filepath = os.path.join(MONITOR_DIR, filename)
+    filepath = os.path.join(config.MONITOR_DIR, filename)
     if os.path.exists(filepath):
         os.remove(filepath)
 
@@ -364,7 +330,7 @@ def sync_listener():
             # connect
             credentials = pika.PlainCredentials("guest", "guest")
             connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
+                pika.ConnectionParameters(host=config.BROKER_HOST, credentials=credentials)
             )
             channel = connection.channel()
             channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
@@ -376,11 +342,11 @@ def sync_listener():
             def callback(ch, method, properties, body):
                 msg = json.loads(body)
                 sender = msg.get("sender")
-                if sender == CLIENT_ID:
+                if sender == config.CLIENT_ID:
                     return
 
                 # wait for permission (Snapshot consistency)
-                WRITE_PERMISSION.wait()
+                config.WRITE_PERMISSION.wait()
 
                 op = msg.get("operation")
                 filename = msg.get("filename")
@@ -401,7 +367,7 @@ def sync_listener():
                             exchange="",
                             routing_key=properties.reply_to,
                             properties=reply_props,
-                            body=json.dumps({"status": "ACK", "sender": CLIENT_ID}),
+                            body=json.dumps({"status": "ACK", "sender": config.CLIENT_ID}),
                         )
                         print(f"[SYNC_ACK] Sent ACK for {op}, {filename}")
                 except Exception as e:
@@ -421,7 +387,7 @@ def broadcast_sync(operation, filename, content=""):
     # connect
     credentials = pika.PlainCredentials("guest", "guest")
     connection = pika.BlockingConnection(
-        pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
+        pika.ConnectionParameters(host=config.BROKER_HOST, credentials=credentials)
     )
     channel = connection.channel()
 
@@ -432,7 +398,7 @@ def broadcast_sync(operation, filename, content=""):
     # publish command
     corr_id = str(uuid.uuid4())
     payload = {
-        "sender": CLIENT_ID,
+        "sender": config.CLIENT_ID,
         "operation": operation,
         "filename": filename,
         "content": content,
@@ -479,8 +445,8 @@ app = Flask(__name__)
 @app.route("/attack", methods=["POST"])
 def trigger_attack():
     def run_encryption():
-        print(f"[RANSOMWARE] Attack started on {CLIENT_ID}...")
-        for root, _, files in os.walk(MONITOR_DIR):
+        print(f"[RANSOMWARE] Attack started on {config.CLIENT_ID}...")
+        for root, _, files in os.walk(config.MONITOR_DIR):
             for file in files:
                 if file.endswith(".locked"):
                     continue
@@ -512,17 +478,16 @@ def trigger_attack():
 
     # new a thread to encrypt
     threading.Thread(target=run_encryption).start()
-    return jsonify({"status": "infected", "target": CLIENT_ID})
+    return jsonify({"status": "infected", "target": config.CLIENT_ID})
 
 
 # simulate normal operation
 @app.route("/normal", methods=["POST"])
 def trigger_normal():
-    global IS_LOCKED_DOWN
-    IS_LOCKED_DOWN = False
+    config.IS_LOCKED_DOWN = False
 
     target_file = None
-    for root, _, files in os.walk(MONITOR_DIR):
+    for root, _, files in os.walk(config.MONITOR_DIR):
         if files:
             target_file = os.path.join(root, files[0])
             break
@@ -541,8 +506,7 @@ def trigger_normal():
 
 @app.route("/unlock", methods=["GET", "POST"])
 def unlock_system():
-    global IS_LOCKED_DOWN
-    IS_LOCKED_DOWN = False
+    config.IS_LOCKED_DOWN = False
     print("[RECOVERY] System unlocked")
     return jsonify({"status": "unlocked"})
 
@@ -550,23 +514,25 @@ def unlock_system():
 # listen to gRPC for trigger lockdown
 class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
     def TriggerLockdown(self, request, context):
-        if request.targeted_node != CLIENT_ID and request.targeted_node != "ALL":
-            msg = f"Ignored. Lockdown meant for {request.targeted_node}, I am {CLIENT_ID}."
-            print(f"[{CLIENT_ID}]: {msg}")
+        if request.targeted_node != config.CLIENT_ID and request.targeted_node != "ALL":
+            msg = f"Ignored. Lockdown meant for {request.targeted_node}, I am {config.CLIENT_ID}."
+            print(f"[{config.CLIENT_ID}]: {msg}")
             return lockdown_pb2.LockdownResponse(success=False, status_message=msg)
 
-        print(f"[{CLIENT_ID}] received. threat_id: {request.threat_id}, reason: {request.reason}")
+        print(
+            f"[{config.CLIENT_ID}] received. threat_id: {request.threat_id}, reason: {request.reason}"
+        )
 
         try:
             # simple lockdown, read only
-            self.lock_directory_readonly(MONITOR_DIR)
-            IS_LOCKED_DOWN = True
-            success_msg = f"Directory {MONITOR_DIR} successfully locked (Read-Only)."
-            print(f"[{CLIENT_ID}]: {success_msg}\n")
+            self.lock_directory_readonly(config.MONITOR_DIR)
+            config.IS_LOCKED_DOWN = True
+            success_msg = f"Directory {config.MONITOR_DIR} successfully locked (Read-Only)."
+            print(f"[{config.CLIENT_ID}]: {success_msg}\n")
             return lockdown_pb2.LockdownResponse(success=True, status_message=success_msg)
         except Exception as e:
             error_msg = f"Failed to lock directory: {e}"
-            print(f"[{CLIENT_ID}]: {error_msg}")
+            print(f"[{config.CLIENT_ID}]: {error_msg}")
             return lockdown_pb2.LockdownResponse(success=False, status_message=error_msg)
 
     def lock_directory_readonly(self, path):
@@ -589,7 +555,7 @@ def serve():
     server.add_insecure_port("[::]:50051")
     server.start()
     print(
-        f"[{CLIENT_ID}] gRPC server started on port 50051, waiting for lockdown commands if needs..."
+        f"[{config.CLIENT_ID}] gRPC server started on port 50051, waiting for lockdown commands if needs..."
     )
     server.wait_for_termination()
 
@@ -632,14 +598,14 @@ class Response:
 @app.route("/snapshot/prepare", methods=["POST"])
 def snapshot_prepare():
     # pause new write operations
-    WRITE_PERMISSION.clear()
+    config.WRITE_PERMISSION.clear()
     return jsonify({"status": "ready"})
 
 
 @app.route("/snapshot/commit", methods=["POST"])
 def snapshot_commit():
     # resume write operations
-    WRITE_PERMISSION.set()
+    config.WRITE_PERMISSION.set()
     return jsonify({"status": "resumed"})
 
 
@@ -647,10 +613,10 @@ def snapshot_commit():
 def snapshot_data():
     # return all files in MONITOR_DIR encoded in base64
     backup_data = {}
-    for root, _, files in os.walk(MONITOR_DIR):
+    for root, _, files in os.walk(config.MONITOR_DIR):
         for file in files:
             filepath = os.path.join(root, file)
-            rel_path = os.path.relpath(filepath, MONITOR_DIR)
+            rel_path = os.path.relpath(filepath, config.MONITOR_DIR)
             try:
                 with open(filepath, "rb") as f:
                     content = base64.b64encode(f.read()).decode("utf-8")
@@ -669,7 +635,7 @@ def read_file():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename is required").to_dict()), 400
 
-    filepath = os.path.join(MONITOR_DIR, req.filename)
+    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     if not os.path.exists(filepath):
         return jsonify(Response(error="File not found").to_dict()), 404
 
@@ -686,13 +652,13 @@ def read_file():
 # return: success status
 @app.route("/create", methods=["POST"])
 def create_file():
-    WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
+    config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     try:
         req = CreateReq(**request.get_json())
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename is required").to_dict()), 400
 
-    filepath = os.path.join(MONITOR_DIR, req.filename)
+    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
         _local_create(req.filename, req.content)
 
@@ -703,14 +669,14 @@ def create_file():
         try:
             log_entry = {
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "client_id": CLIENT_ID,
+                "client_id": config.CLIENT_ID,
                 "filename": req.filename,
                 "operation": "CREATE",
                 "appended": req.content,
             }
 
-            file_exists = os.path.exists(FILE_OPERATION_FILE)
-            with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
+            file_exists = os.path.exists(config.FILE_OPERATION_FILE)
+            with open(config.FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(
                     f,
                     fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
@@ -734,13 +700,13 @@ def create_file():
 # return: file content after modification
 @app.route("/write", methods=["POST"])
 def write_file():
-    WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
+    config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     try:
         req = WriteReq(**request.get_json())
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename and content are required").to_dict()), 400
 
-    filepath = os.path.join(MONITOR_DIR, req.filename)
+    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
         new_content = _local_write(req.filename, req.content)
 
@@ -751,14 +717,14 @@ def write_file():
         try:
             log_entry = {
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "client_id": CLIENT_ID,
+                "client_id": config.CLIENT_ID,
                 "filename": req.filename,
                 "operation": "MODIFY",
                 "appended": req.content,
             }
 
-            file_exists = os.path.exists(FILE_OPERATION_FILE)
-            with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
+            file_exists = os.path.exists(config.FILE_OPERATION_FILE)
+            with open(config.FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(
                     f,
                     fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
@@ -782,13 +748,13 @@ def write_file():
 # return: success status
 @app.route("/delete", methods=["POST"])
 def delete_file():
-    WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
+    config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     try:
         req = DeleteReq(**request.get_json())
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename is required").to_dict()), 400
 
-    filepath = os.path.join(MONITOR_DIR, req.filename)
+    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
         if not os.path.exists(filepath):
             return jsonify(Response(error="File not found").to_dict()), 404
@@ -802,14 +768,14 @@ def delete_file():
         try:
             log_entry = {
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "client_id": CLIENT_ID,
+                "client_id": config.CLIENT_ID,
                 "filename": req.filename,
                 "operation": "DELETE",
                 "appended": "",
             }
 
-            file_exists = os.path.exists(FILE_OPERATION_FILE)
-            with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
+            file_exists = os.path.exists(config.FILE_OPERATION_FILE)
+            with open(config.FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(
                     f,
                     fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
@@ -829,8 +795,8 @@ def delete_file():
 
 
 if __name__ == "__main__":
-    print(f"[INFO] Client started on {CLIENT_ID}. Watching {MONITOR_DIR}")
-    fishing(MONITOR_DIR)
+    print(f"[INFO] Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
+    fishing(config.MONITOR_DIR)
     # listen command from detection engine
     threading.Thread(target=lock_down_listener, daemon=True).start()
     threading.Thread(target=serve, daemon=True).start()  # listen sync command from other clients
@@ -844,7 +810,7 @@ if __name__ == "__main__":
     # moniter `/data`
     # also `/data`'s sub-dir
     observer = Observer()
-    observer.schedule(event_handler, path=MONITOR_DIR, recursive=True)
+    observer.schedule(event_handler, path=config.MONITOR_DIR, recursive=True)
     observer.start()
 
     # start waiting for attacker(?)
