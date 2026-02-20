@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
 import requests
 import random
+from flasgger import Swagger
 from dataclasses import dataclass, asdict
 from typing import Optional
 
 app = Flask(__name__)
+Swagger(app)
 
 FINANCE_NODES = [
     "client-finance1",
@@ -50,6 +52,31 @@ class Response:
 # route to finance1234 node
 @app.route("/finance/read", methods=["POST"])
 def read_op():
+    """
+    Read a file from one of the finance nodes.
+    ---
+    tags:
+      - File Operations
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - filename
+          properties:
+            filename:
+              type: string
+              example: "test.txt"
+    responses:
+      200:
+        description: File content retrieved successfully
+      400:
+        description: Invalid request parameters
+      500:
+        description: Internal server error
+    """
     try:
         req = ReadReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -68,6 +95,35 @@ def read_op():
 # route to finance1 node(primary)
 @app.route("/finance/write", methods=["POST"])
 def write_op():
+    """
+    Write content to a file on the primary finance node (finance1).
+    ---
+    tags:
+      - File Operations
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - filename
+            - content
+          properties:
+            filename:
+              type: string
+              example: "test.txt"
+            content:
+              type: string
+              example: "Hello World"
+    responses:
+      200:
+        description: File written successfully
+      400:
+        description: Invalid request parameters
+      500:
+        description: Internal server error
+    """
     try:
         req = WriteReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -83,6 +139,34 @@ def write_op():
 # route to finance1 node(primary)
 @app.route("/finance/create", methods=["POST"])
 def create_op():
+    """
+    Create a new file on the primary finance node (finance1).
+    ---
+    tags:
+      - File Operations
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - filename
+          properties:
+            filename:
+              type: string
+              example: "new_file.txt"
+            content:
+              type: string
+              example: "Initial content"
+    responses:
+      200:
+        description: File created successfully
+      400:
+        description: Invalid request parameters
+      500:
+        description: Internal server error
+    """
     try:
         req = CreateReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -98,6 +182,31 @@ def create_op():
 # route to finance1 node(primary)
 @app.route("/finance/delete", methods=["POST"])
 def delete_op():
+    """
+    Delete a file on the primary finance node (finance1).
+    ---
+    tags:
+      - File Operations
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - filename
+          properties:
+            filename:
+              type: string
+              example: "test.txt"
+    responses:
+      200:
+        description: File deleted successfully
+      400:
+        description: Invalid request parameters
+      500:
+        description: Internal server error
+    """
     try:
         req = DeleteReq(**request.get_json())
     except (TypeError, AttributeError):
