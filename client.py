@@ -3,6 +3,7 @@ import time
 import math
 import json
 import csv
+import uuid
 import base64
 import threading
 import pika
@@ -20,13 +21,6 @@ MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
 
 FILE_OPERATION_FILE = "/logs/file_operation_log.csv"
-
-FINANCE_NODES = [
-    "client-finance1",
-    "client-finance2",
-    "client-finance3",
-    "client-finance4",
-]
 
 IS_LOCKED_DOWN = False
 WRITE_PERMISSION = threading.Event()
@@ -172,6 +166,142 @@ def lock_down_listener():
             time.sleep(5)
 
 
+# local IO
+def _local_create(filename, content):
+    filepath = os.path.join(MONITOR_DIR, filename)
+    with open(filepath, "w") as f:
+        f.write(content)
+
+
+def _local_write(filename, content):
+    filepath = os.path.join(MONITOR_DIR, filename)
+    with open(filepath, "a") as f:
+        f.write(content)
+    with open(filepath, "r") as f:
+        return f.read()
+
+
+def _local_delete(filename):
+    filepath = os.path.join(MONITOR_DIR, filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+
+# rabbitMQ sync, `finance_sync`, all nodes manage files only by this thread.
+def sync_listener():
+    while True:
+        try:
+            # connect
+            credentials = pika.PlainCredentials("guest", "guest")
+            connection = pika.BlockingConnection(
+                pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
+            )
+            channel = connection.channel()
+            channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
+
+            result = channel.queue_declare(queue="", exclusive=True)
+            queue_name = result.method.queue
+            channel.queue_bind(exchange="finance_sync", queue=queue_name)
+
+            def callback(ch, method, properties, body):
+                msg = json.loads(body)
+                sender = msg.get("sender")
+                if sender == CLIENT_ID:
+                    return
+
+                # wait for permission (Snapshot consistency)
+                WRITE_PERMISSION.wait()
+
+                op = msg.get("operation")
+                filename = msg.get("filename")
+                content = msg.get("content", "")
+
+                try:
+                    if op == "CREATE":
+                        _local_create(filename, content)
+                    elif op == "WRITE":
+                        _local_write(filename, content)
+                    elif op == "DELETE":
+                        _local_delete(filename)
+
+                    # send ACK
+                    if properties.reply_to:
+                        reply_props = pika.BasicProperties(correlation_id=properties.correlation_id)
+                        ch.basic_publish(
+                            exchange="",
+                            routing_key=properties.reply_to,
+                            properties=reply_props,
+                            body=json.dumps({"status": "ACK", "sender": CLIENT_ID}),
+                        )
+                        print(f"[SYNC_ACK] Sent ACK for {op}, {filename}")
+                except Exception as e:
+                    print(f"[ERROR] Sync processing failed: {e}")
+
+            # starts listening
+            channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
+            print("[SYNC] Listener started")
+            channel.start_consuming()
+        except Exception as e:
+            print(f"[ERROR] Sync listener connection lost: {e}")
+            time.sleep(5)
+
+
+# primary client write node send function
+def broadcast_sync(operation, filename, content=""):
+    # connect
+    credentials = pika.PlainCredentials("guest", "guest")
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
+    )
+    channel = connection.channel()
+
+    channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
+    result = channel.queue_declare(queue="", exclusive=True)
+    callback_queue = result.method.queue
+
+    # publish command
+    corr_id = str(uuid.uuid4())
+    payload = {
+        "sender": CLIENT_ID,
+        "operation": operation,
+        "filename": filename,
+        "content": content,
+    }
+
+    channel.basic_publish(
+        exchange="finance_sync",
+        routing_key="",
+        properties=pika.BasicProperties(
+            reply_to=callback_queue,
+            correlation_id=corr_id,
+        ),
+        body=json.dumps(payload),
+    )
+    print(f"[SYNC] request for {operation}, {filename}, {content}")
+
+    # starts to count ACK number
+    ack_count = 0
+
+    def on_ack(ch, method, props, body):
+        nonlocal ack_count
+        if props.correlation_id == corr_id:
+            ack_count += 1
+
+    # starts listening ack
+    channel.basic_consume(queue=callback_queue, on_message_callback=on_ack, auto_ack=True)
+
+    start_time = time.time()
+    # wait for 3 ACKs (assuming 4 nodes total, 1 sender, 3 receivers)
+    while ack_count < 3:
+        connection.process_data_events(time_limit=1)
+        if time.time() - start_time > 10:
+            print(f"[WARNING] Sync timeout. Received {ack_count}/3 ACKs.")
+            break
+
+    print(f"[🍺 SYNC_OK] Received {ack_count} ACKs")
+    connection.close()
+
+
 app = Flask(__name__)
 
 
@@ -249,20 +379,17 @@ class ReadReq:
 class WriteReq:
     filename: str
     content: str
-    propagated: bool = False
 
 
 @dataclass
 class CreateReq:
     filename: str
     content: str = ""
-    propagated: bool = False
 
 
 @dataclass
 class DeleteReq:
     filename: str
-    propagated: bool = False
 
 
 @dataclass
@@ -329,6 +456,7 @@ def read_file():
         return jsonify(Response(status="error", message=str(e)).to_dict()), 500
 
 
+# work only for primary node
 # param: filename, content (optional)
 # return: success status
 @app.route("/create", methods=["POST"])
@@ -341,56 +469,42 @@ def create_file():
 
     filepath = os.path.join(MONITOR_DIR, req.filename)
     try:
-        with open(filepath, "w") as f:
-            f.write(req.content)
+        _local_create(req.filename, req.content)
 
-        # sync with other 3 nodes
-        if not req.propagated:
-            for node in FINANCE_NODES:
-                # skip self
-                if CLIENT_ID in node:
-                    continue
-                try:
-                    requests.post(
-                        f"http://{node}:5000/create",
-                        json=asdict(
-                            CreateReq(filename=req.filename, content=req.content, propagated=True)
-                        ),
-                        timeout=5,
-                    )
-                except Exception as e:
-                    print(f"[WARNING] Propagation failed to {node}: {e}")
+        # broadcast to others via RabbitMQ
+        broadcast_sync("CREATE", req.filename, req.content)
 
-            # log locally and notify recovery service
-            try:
-                log_entry = {
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "client_id": CLIENT_ID,
-                    "filename": req.filename,
-                    "operation": "CREATE",
-                    "appended": req.content,
-                }
+        # log locally and notify recovery service
+        try:
+            log_entry = {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "client_id": CLIENT_ID,
+                "filename": req.filename,
+                "operation": "CREATE",
+                "appended": req.content,
+            }
 
-                file_exists = os.path.exists(FILE_OPERATION_FILE)
-                with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
-                    writer = csv.DictWriter(
-                        f,
-                        fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
-                    )
-                    if not file_exists:
-                        writer.writeheader()
-                    writer.writerow(log_entry)
+            file_exists = os.path.exists(FILE_OPERATION_FILE)
+            with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
+                )
+                if not file_exists:
+                    writer.writeheader()
+                writer.writerow(log_entry)
 
-                # notify recovery service
-                requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
-            except Exception as e:
-                print(f"[WARNING] Logging/Archive failed: {e}")
+            # notify recovery service
+            requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
+        except Exception as e:
+            print(f"[WARNING] Logging/Archive failed: {e}")
 
         return jsonify(Response(status="success", message="File created").to_dict())
     except Exception as e:
         return jsonify(Response(status="error", message=str(e)).to_dict()), 500
 
 
+# work only for primary node
 # param: filename and content to be appended(append only)
 # return: file content after modification
 @app.route("/write", methods=["POST"])
@@ -403,58 +517,42 @@ def write_file():
 
     filepath = os.path.join(MONITOR_DIR, req.filename)
     try:
-        with open(filepath, "a") as f:
-            f.write(req.content)
-        with open(filepath, "r") as f:
-            new_content = f.read()
+        new_content = _local_write(req.filename, req.content)
 
-        # sync with other 3 nodes
-        if not req.propagated:
-            for node in FINANCE_NODES:
-                # skip self
-                if CLIENT_ID in node:
-                    continue
-                try:
-                    requests.post(
-                        f"http://{node}:5000/write",
-                        json=asdict(
-                            WriteReq(filename=req.filename, content=req.content, propagated=True)
-                        ),
-                        timeout=5,
-                    )
-                except Exception as e:
-                    print(f"[WARNING] Propagation failed to {node}: {e}")
+        # broadcast to others via RabbitMQ
+        broadcast_sync("WRITE", req.filename, req.content)
 
-            # log locally and notify recovery service
-            try:
-                log_entry = {
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "client_id": CLIENT_ID,
-                    "filename": req.filename,
-                    "operation": "MODIFY",
-                    "appended": req.content,
-                }
+        # log locally and notify recovery service
+        try:
+            log_entry = {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "client_id": CLIENT_ID,
+                "filename": req.filename,
+                "operation": "MODIFY",
+                "appended": req.content,
+            }
 
-                file_exists = os.path.exists(FILE_OPERATION_FILE)
-                with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
-                    writer = csv.DictWriter(
-                        f,
-                        fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
-                    )
-                    if not file_exists:
-                        writer.writeheader()
-                    writer.writerow(log_entry)
+            file_exists = os.path.exists(FILE_OPERATION_FILE)
+            with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
+                )
+                if not file_exists:
+                    writer.writeheader()
+                writer.writerow(log_entry)
 
-                # notify recovery service
-                requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
-            except Exception as e:
-                print(f"[WARNING] Logging/Archive failed: {e}")
+            # notify recovery service
+            requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
+        except Exception as e:
+            print(f"[WARNING] Logging/Archive failed: {e}")
 
         return jsonify(Response(status="success", content=new_content).to_dict())
     except Exception as e:
         return jsonify(Response(status="error", message=str(e)).to_dict()), 500
 
 
+# work only for primary node
 # param: filename
 # return: success status
 @app.route("/delete", methods=["POST"])
@@ -467,50 +565,38 @@ def delete_file():
 
     filepath = os.path.join(MONITOR_DIR, req.filename)
     try:
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        else:
+        if not os.path.exists(filepath):
             return jsonify(Response(error="File not found").to_dict()), 404
 
-        # sync with other 3 nodes
-        if not req.propagated:
-            for node in FINANCE_NODES:
-                # skip self
-                if CLIENT_ID in node:
-                    continue
-                try:
-                    requests.post(
-                        f"http://{node}:5000/delete",
-                        json=asdict(DeleteReq(filename=req.filename, propagated=True)),
-                        timeout=5,
-                    )
-                except Exception as e:
-                    print(f"[WARNING] Propagation failed to {node}: {e}")
+        _local_delete(req.filename)
 
-            # log locally and notify recovery service
-            try:
-                log_entry = {
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "client_id": CLIENT_ID,
-                    "filename": req.filename,
-                    "operation": "DELETE",
-                    "appended": "",
-                }
+        # broadcast to others via RabbitMQ
+        broadcast_sync("DELETE", req.filename)
 
-                file_exists = os.path.exists(FILE_OPERATION_FILE)
-                with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
-                    writer = csv.DictWriter(
-                        f,
-                        fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
-                    )
-                    if not file_exists:
-                        writer.writeheader()
-                    writer.writerow(log_entry)
+        # log locally and notify recovery service
+        try:
+            log_entry = {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "client_id": CLIENT_ID,
+                "filename": req.filename,
+                "operation": "DELETE",
+                "appended": "",
+            }
 
-                # notify recovery service
-                requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
-            except Exception as e:
-                print(f"[WARNING] Logging/Archive failed: {e}")
+            file_exists = os.path.exists(FILE_OPERATION_FILE)
+            with open(FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
+                )
+                if not file_exists:
+                    writer.writeheader()
+                writer.writerow(log_entry)
+
+            # notify recovery service
+            requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
+        except Exception as e:
+            print(f"[WARNING] Logging/Archive failed: {e}")
 
         return jsonify(Response(status="success", message="File deleted").to_dict())
     except Exception as e:
@@ -519,7 +605,10 @@ def delete_file():
 
 if __name__ == "__main__":
     print(f"[🍺] Client started on {CLIENT_ID}. Watching {MONITOR_DIR}")
+    # listen command from detection engine
     threading.Thread(target=lock_down_listener, daemon=True).start()
+    # listen sync command from other clients
+    threading.Thread(target=sync_listener, daemon=True).start()
 
     # what to do when file operation monitored
     event_handler = EntropyMonitor()
