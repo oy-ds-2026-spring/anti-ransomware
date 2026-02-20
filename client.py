@@ -87,10 +87,9 @@ NUM_BLOCKS = 4
 BLOCK_SIZE = 4096
 
 HIGH_ENTROPY_EXTENSIONS = {
-    '.png', '.jpg', '.jpeg', '.gif', '.bmp', 
-    '.mp4', '.mp3', '.avi', '.mov',
-    '.zip', '.gz', '.rar', '.7z', '.tar',
-    '.pdf'
+    '.jpeg', '.gif', '.bmp', 
+    '.mp4', '.mp3', '.avi', '.mov', 
+    '.7z', '.tar'
 }
 
 PROPER_HEADS = {
@@ -158,6 +157,9 @@ class EntropyMonitor(FileSystemEventHandler):
         # note the time when the file is modified
         self.modification_timestamps = deque(maxlen=10) 
         self.VELOCITY_THRESHOLD = 1.0 # sus behavior: 10 modifications in 1s
+        # for size change
+        self.file_metadata = {}
+        self.SIZE_CHANGE_THRESHOLD = 0.3 # sus behavior: 30% change in file size
         
     def check_modify_velocity(self):
         if len(self.modification_timestamps) == 10:
@@ -165,6 +167,15 @@ class EntropyMonitor(FileSystemEventHandler):
             if time_diff < self.VELOCITY_THRESHOLD:
                 return True
         return False
+    
+    def check_size_change(self, filepath, current_size):
+        if filepath in self.file_metadata:
+            old_size = self.file_metadata[filepath]['size']
+            if old_size > 0:
+                change_ratio = abs(current_size - old_size) / old_size
+                if change_ratio >= self.SIZE_CHANGE_THRESHOLD:
+                    return True, change_ratio
+        return False, 0
         
     def _should_ignore(self, filename):
         # ignore files that is locked and temp files
@@ -179,38 +190,51 @@ class EntropyMonitor(FileSystemEventHandler):
         return False
 
     def on_modified(self, event):
+        global IS_LOCKED_DOWN
         # only monitor file
         if IS_LOCKED_DOWN or event.is_directory:
             return  # don't report when lock_down
         filename = event.src_path
         basename = os.path.basename(filename)
         
+        # filter contaminated file
+        if filename.endswith(".locked") or ".tmp" in filename:
+            return
+        
         if basename in BAITS:
             print(f"[Warning] Confirmed Attack: Baits File [{basename}] is modified.")
-            # TODO: 这里算local edge monitoring么，直接lockdown本地
             IS_LOCKED_DOWN = True 
             
-            send_msg(filename, 8.0, "CANARY_TRIGGERED") 
+            send_msg(filename, 8.0, "BAIT_TRIGGERED") 
             return
         
         self.modification_timestamps.append(time.time())
-        
-        if self.check_velocity():
+        if self.check_modify_velocity():
             print(f"[Warning] Possible Attack: File modify freq exceeding 10 times/sec.")
             send_msg(filename, 8.0, "VELOCITY_ATTACK")
             return
-
-        if self._should_ignore(filename):
-            return
+        
+        try:
+            current_size = os.path.getsize(filename)
+            is_suspicious_size, ratio = self.check_size_change(filename, current_size)
+            self.file_metadata[filename] = {'size': current_size}
+            if is_suspicious_size:
+                print(f"[Warning] Size Anomaly: {basename} changed by {ratio*100:.1f}%")
+                send_msg(filename, 0, "SIZE_ANOMALY")
+        except OSError:
+            pass
         
         ext = os.path.splitext(filename)[1].lower()
-        
         # check headers
         if ext in PROPER_HEADS:
             if is_header_modified(filename, ext):
                 # skip entropy calc since this file is confirm modified
                 print(f"[Warning] Confirmed Attack: Detected {ext} file header is modified: {filename}")
+                IS_LOCKED_DOWN = True
                 send_msg(filename, 8.0, "MODIFY") # red flag this file
+            return
+        
+        if self._should_ignore(filename):
             return
         
         data = read_sampled_data(filename) # use random sample check
@@ -348,6 +372,14 @@ def trigger_normal():
             return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "no_files_found"}), 404
+
+# undo lockdown
+@app.route("/unlock", methods=["GET", "POST"])
+def unlock_system():
+    global IS_LOCKED_DOWN
+    IS_LOCKED_DOWN = False
+    print("[RECOVERY] System unlocked")
+    return jsonify({"status": "unlocked"})
 
 
 if __name__ == "__main__":
