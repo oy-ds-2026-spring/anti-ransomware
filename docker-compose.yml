@@ -25,7 +25,7 @@ services:
   detection-service:
     build: .
     container_name: detection-service
-    command: python detection.py  # pick a script to run
+    command: python ./detection/detection.py  # pick a script to run
     volumes:
       - .:/app  # mount current source code; changes take effect after restart
       - ./shared_logs:/logs
@@ -39,10 +39,10 @@ services:
   recovery-service:
     build: .
     container_name: recovery-service
-    command: python recovery.py
+    command: python ./recovery/recovery.py
     volumes:
       - .:/app
-      - ./recovery_logs:/logs # file writing log, for further recovery
+      - ./recovery/recovery_logs:/logs # file writing log, for further recovery
     depends_on:
       - backup-storage
     networks:
@@ -52,9 +52,9 @@ services:
   backup-storage:
     build: .
     container_name: backup-storage
-    command: python backup_server.py
+    command: python ./recovery/backup_server.py
     volumes:
-      - ./secure_backups:/data
+      - ./recovery/backup:/data
     networks:
       - ransom_net
 
@@ -64,7 +64,7 @@ services:
     build: .
     container_name: client-finance1
     hostname: client-finance1
-    command: python client.py
+    command: python ./client/client.py
     expose:
       - "50051"  # gRPC Lockdown port
       - "4321"
@@ -87,7 +87,7 @@ services:
     build: .
     container_name: client-finance2
     hostname: client-finance2
-    command: python client.py
+    command: python ./client/client.py
     expose:
       - "50051"  # gRPC Lockdown port
       - "4321"
@@ -110,7 +110,7 @@ services:
     build: .
     container_name: client-finance3
     hostname: client-finance3
-    command: python client.py
+    command: python ./client/client.py
     expose:
       - "50051"  # gRPC Lockdown port
       - "4321"
@@ -133,7 +133,7 @@ services:
     build: .
     container_name: client-finance4
     hostname: client-finance4
-    command: python client.py
+    command: python ./client/client.py
     expose:
       - "50051"  # gRPC Lockdown port
       - "4321"
@@ -181,7 +181,7 @@ services:
   finance-gateway:
     build: .
     container_name: finance-gateway
-    command: python gateway.py
+    command: python ./gateway/gateway.py
     ports:
       - "9000:9000"
     environment:
