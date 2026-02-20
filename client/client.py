@@ -45,6 +45,30 @@ BAITS = [
     "zzz_do_not_delete.dat"      # reverse traverse
 ]
 
+FILE_OPERATION_FILE = "/logs/file_operation_log.csv"
+
+IS_LOCKED_DOWN = False
+WRITE_PERMISSION = threading.Event()
+WRITE_PERMISSION.set()  # Initially allowed
+
+NUM_BLOCKS = 4
+BLOCK_SIZE = 4096
+
+HIGH_ENTROPY_EXTENSIONS = {
+    '.jpeg', '.gif', '.bmp', 
+    '.mp4', '.mp3', '.avi', '.mov', 
+    '.7z', '.tar'
+}
+
+PROPER_HEADS = {
+    '.pdf': b'%PDF',
+    '.png': b'\x89PNG',
+    '.zip': b'PK\x03\x04',
+    '.jpg': b'\xff\xd8\xff',
+    '.rar': b'Rar!\x1a\x07',
+    '.gz':  b'\x1f\x8b'
+}
+
 # generate some baits file, if these files are modified meaning the file is being attack
 def fishing(monitor_dir):
     # spread baits
@@ -57,12 +81,6 @@ def fishing(monitor_dir):
                 f.write(content)
         except Exception as e:
             print(f"[Error] Deploy bait file failed, {bait_name}: {e}")
-FILE_OPERATION_FILE = "/logs/file_operation_log.csv"
-
-IS_LOCKED_DOWN = False
-WRITE_PERMISSION = threading.Event()
-WRITE_PERMISSION.set()  # Initially allowed
-
 
 # send msg to RabbitMQ
 def send_msg(file_path, entropy, event_type):
@@ -109,24 +127,6 @@ def calculate_entropy(data):
             entropy += -p_x * math.log(p_x, 2)
 
     return entropy
-
-NUM_BLOCKS = 4
-BLOCK_SIZE = 4096
-
-HIGH_ENTROPY_EXTENSIONS = {
-    '.jpeg', '.gif', '.bmp', 
-    '.mp4', '.mp3', '.avi', '.mov', 
-    '.7z', '.tar'
-}
-
-PROPER_HEADS = {
-    '.pdf': b'%PDF',
-    '.png': b'\x89PNG',
-    '.zip': b'PK\x03\x04',
-    '.jpg': b'\xff\xd8\xff',
-    '.rar': b'Rar!\x1a\x07',
-    '.gz':  b'\x1f\x8b'
-}
 
 def is_header_modified(filepath, ext):
     # header of some file types are fixed
@@ -203,7 +203,7 @@ class EntropyMonitor(FileSystemEventHandler):
                 if change_ratio >= self.SIZE_CHANGE_THRESHOLD:
                     return True, change_ratio
         return False, 0
-        
+    
     def _should_ignore(self, filename):
         # ignore files that is locked and temp files
         if filename.endswith(".locked") or ".tmp" in filename:
@@ -218,12 +218,6 @@ class EntropyMonitor(FileSystemEventHandler):
 
     def on_modified(self, event):
         global IS_LOCKED_DOWN
-
-class EntropyMonitor(FileSystemEventHandler):
-    def _should_ignore(self, filename):
-        return filename.endswith(".locked") or ".tmp" in filename
-
-    def on_modified(self, event):
         # only monitor file
         if IS_LOCKED_DOWN or event.is_directory:
             return  # don't report when lock_down
