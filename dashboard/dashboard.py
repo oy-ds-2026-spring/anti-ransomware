@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 import json
 import os
 import requests
@@ -11,6 +11,7 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
 STATE_FILE = "/logs/system_state.json"
+POSITIONS_FILE = "./node_positions.json"
 
 
 @app.route("/")
@@ -41,6 +42,28 @@ def get_state():
             "entropy_history": [],
         }
     )
+
+
+@app.route("/api/positions", methods=["GET"])
+def get_positions():
+    if os.path.exists(POSITIONS_FILE):
+        try:
+            with open(POSITIONS_FILE, "r") as f:
+                return jsonify(json.load(f))
+        except Exception:
+            pass
+    return jsonify({})
+
+
+@app.route("/api/positions", methods=["POST"])
+def save_positions():
+    try:
+        data = request.get_json()
+        with open(POSITIONS_FILE, "w") as f:
+            json.dump(data, f)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # attack/normal
