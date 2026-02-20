@@ -1,10 +1,17 @@
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 import json
 import os
 import requests
+import logging
 
 app = Flask(__name__)
+
+# so index.html is automatically reloaded
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
+
 STATE_FILE = "/logs/system_state.json"
+POSITIONS_FILE = "./node_positions.json"
 
 
 @app.route("/")
@@ -25,8 +32,10 @@ def get_state():
     # if no state_file
     return jsonify(
         {
-            "finance": "Safe",
-            "rnd": "Safe",
+            "finance1": "Safe",
+            "finance2": "Safe",
+            "finance3": "Safe",
+            "finance4": "Safe",
             "last_entropy": 0.0,
             "logs": ["System initialized. Waiting for events..."],
             "processing_logs": [],
@@ -35,10 +44,32 @@ def get_state():
     )
 
 
+@app.route("/api/positions", methods=["GET"])
+def get_positions():
+    if os.path.exists(POSITIONS_FILE):
+        try:
+            with open(POSITIONS_FILE, "r") as f:
+                return jsonify(json.load(f))
+        except Exception:
+            pass
+    return jsonify({})
+
+
+@app.route("/api/positions", methods=["POST"])
+def save_positions():
+    try:
+        data = request.get_json()
+        with open(POSITIONS_FILE, "w") as f:
+            json.dump(data, f)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # attack/normal
 @app.route("/api/action/<target>/<action>", methods=["POST"])
 def trigger_action(target, action):
-    # target: finance/rnd
+    # target: finance1/finance2/finance3/finance4
     # action: attack/normal
     url = f"http://client-{target}:5000/{action}"
     try:
@@ -52,5 +83,9 @@ def trigger_action(target, action):
 
 
 if __name__ == "__main__":
+    # disable default Flask/Werkzeug logging
+    log = logging.getLogger("werkzeug")
+    log.setLevel(logging.ERROR)
+
     print("🌐 Dashboard starting on port 8501...")
     app.run(host="0.0.0.0", port=8501)
