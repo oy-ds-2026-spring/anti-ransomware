@@ -33,7 +33,7 @@ def save_state():
         with open(LOG_FILE, "w") as f:
             json.dump(current_state, f)
     except Exception as e:
-        print(f"Dashboard update failed: {e}")
+        print(f"[WARNING] Dashboard update failed: {e}")
 
 
 # compose new log
@@ -41,10 +41,14 @@ def log_client_status(client_id, status, entropy, message):
     global current_state
 
     # 1. department status
-    if "Finance" in client_id:
-        current_state["finance"] = status
-    elif "RnD" in client_id:
-        current_state["rnd"] = status
+    if "finance1" in client_id:
+        current_state["finance1"] = status
+    elif "finance2" in client_id:
+        current_state["finance2"] = status
+    elif "finance3" in client_id:
+        current_state["finance3"] = status
+    elif "finance4" in client_id:
+        current_state["finance4"] = status
 
     # 2. last_entropy
     current_state["last_entropy"] = entropy
@@ -75,9 +79,9 @@ def log_command_lock_down(client_id, timestamp):
 
 
 # log which msg I'm processing, for dashboard
-def log_msg_processing(file_path, entropy, event_type):
+def log_msg_processing(client_id, file_path, entropy, event_type):
     timestamp = time.strftime("%H:%M:%S")
-    log_msg = f"[{timestamp}] Analyzing: {os.path.basename(file_path)} | {event_type} | Entropy: {entropy:.2f}"
+    log_msg = f"[{timestamp}] {client_id} | {os.path.basename(file_path)} | {event_type} | Entropy: {entropy:.2f}"
     current_state["processing_logs"].append(log_msg)
     if len(current_state["processing_logs"]) > 50:
         current_state["processing_logs"].pop(0)
@@ -134,7 +138,7 @@ def msg_callback(ch, method, properties, body):
         event_type = msg.get("event_type", "UNKNOWN")
 
         # log current msg
-        log_msg_processing(file_path, entropy, event_type)
+        log_msg_processing(client_id, file_path, entropy, event_type)
         print(f"Analyzing: {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
 
         if event_type == "LOCK_DOWN":
@@ -156,7 +160,8 @@ def msg_callback(ch, method, properties, body):
                 client_id, status, entropy, f"Normal activity: {os.path.basename(file_path)}"
             )
     except Exception as e:
-        print(f"Error processing message: {e}")
+        print(f"[WARNING] Error processing message: {e}")
+
 
 def main():
     print("Detection Service Starting...")
