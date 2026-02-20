@@ -1,3 +1,6 @@
+#   docker-compose up -d          # Start all services
+#   docker-compose down           # Stop all services
+#   docker-compose logs -f        # View logs
 version: '3.8'
 
 services:
@@ -62,9 +65,13 @@ services:
     container_name: client-finance1
     hostname: client-finance1
     command: python client.py
+    expose:
+      - "50051"  # gRPC Lockdown port
+      - "4321"
     environment:
       - CLIENT_ID=finance1
       - MONITOR_DIR=/data
+      - PEERS=client-finance2:4321,client-finance3:4321,client-finance4:4321
     volumes:
       - .:/app
       - ./simulation_data/finance1:/data  # Mount simulated data
@@ -81,9 +88,13 @@ services:
     container_name: client-finance2
     hostname: client-finance2
     command: python client.py
+    expose:
+      - "50051"  # gRPC Lockdown port
+      - "4321"
     environment:
       - CLIENT_ID=finance2
       - MONITOR_DIR=/data
+      - PEERS=client-finance1:4321,client-finance3:4321,client-finance4:4321
     volumes:
       - .:/app
       - ./simulation_data/finance2:/data  # Mount simulated data
@@ -100,9 +111,13 @@ services:
     container_name: client-finance3
     hostname: client-finance3
     command: python client.py
+    expose:
+      - "50051"  # gRPC Lockdown port
+      - "4321"
     environment:
       - CLIENT_ID=finance3
       - MONITOR_DIR=/data
+      - PEERS=client-finance1:4321,client-finance2:4321,client-finance4:4321
     volumes:
       - .:/app
       - ./simulation_data/finance3:/data  # Mount simulated data
@@ -119,9 +134,13 @@ services:
     container_name: client-finance4
     hostname: client-finance4
     command: python client.py
+    expose:
+      - "50051"  # gRPC Lockdown port
+      - "4321"
     environment:
       - CLIENT_ID=finance4
       - MONITOR_DIR=/data
+      - PEERS=client-finance2:4321,client-finance3:4321,client-finance1:4321
     volumes:
       - .:/app
       - ./simulation_data/finance4:/data  # Mount simulated data
@@ -165,6 +184,8 @@ services:
     command: python gateway.py
     ports:
       - "9000:9000"
+    environment:
+      - STORAGE_NODES=client-finance1,client-finance2,client-finance3,client-finance4
     volumes:
       - .:/app
     networks:

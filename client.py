@@ -1,4 +1,5 @@
 import os
+import stat
 import time
 import math
 import json
@@ -8,6 +9,11 @@ import base64
 import threading
 import pika
 import random
+import grpc
+import logging
+from concurrent import futures
+import lockdown_pb2
+import lockdown_pb2_grpc
 import requests
 from flask import Flask, jsonify, request
 from dataclasses import dataclass, asdict
@@ -368,6 +374,47 @@ def trigger_normal():
 
     return jsonify({"status": "no_files_found"}), 404
 
+# listen to gRPC for trigger lockdown
+class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
+    def TriggerLockdown(self, request, context):
+        if request.targeted_node != CLIENT_ID and request.targeted_node != "ALL":
+            msg = f"Ignored. Lockdown meant for {request.targeted_node}, I am {CLIENT_ID}."
+            print(f"[{CLIENT_ID}]: {msg}")
+            return lockdown_pb2.LockdownResponse(success=False, status_message=msg)
+        
+        print(f"[{CLIENT_ID}] received. threat_id: {request.threat_id}, reason: {request.reason}")
+        
+        try:
+            # simple lockdown, read only
+            self.lock_directory_readonly(MONITOR_DIR)
+            IS_LOCKED_DOWN = True
+            success_msg = f"Directory {MONITOR_DIR} successfully locked (Read-Only)."
+            print(f"[{CLIENT_ID}]: {success_msg}\n")
+            return lockdown_pb2.LockdownResponse(success=True, status_message=success_msg)
+        except Exception as e:
+            error_msg = f"Failed to lock directory: {e}"
+            print(f"[{CLIENT_ID}]: {error_msg}")
+            return lockdown_pb2.LockdownResponse(success=False, status_message=error_msg)
+    def lock_directory_readonly(self, path):
+        # modify permissions to read-only for all files and directories
+        READ_ONLY = stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH
+        # dir need execute permission to be accessible, even for read-only
+        DIR_READ_ONLY = READ_ONLY | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+
+        os.chmod(path, DIR_READ_ONLY)
+        for root, dirs, files in os.walk(path):
+            for d in dirs:
+                os.chmod(os.path.join(root, d), DIR_READ_ONLY)
+            for f in files:
+                os.chmod(os.path.join(root, f), READ_ONLY)
+
+def serve():
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    lockdown_pb2_grpc.add_LockdownServiceServicer_to_server(LockdownServicer(), server)
+    server.add_insecure_port('[::]:50051')
+    server.start()
+    print(f"[{CLIENT_ID}] gRPC server started on port 50051, waiting for lockdown commands if needs...")
+    server.wait_for_termination()
 
 # requests and responses
 @dataclass
@@ -607,7 +654,7 @@ if __name__ == "__main__":
     print(f"[🍺] Client started on {CLIENT_ID}. Watching {MONITOR_DIR}")
     # listen command from detection engine
     threading.Thread(target=lock_down_listener, daemon=True).start()
-    # listen sync command from other clients
+    threading.Thread(target=serve, daemon=True).start()    # listen sync command from other clients
     threading.Thread(target=sync_listener, daemon=True).start()
 
     # what to do when file operation monitored
