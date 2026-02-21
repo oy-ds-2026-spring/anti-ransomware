@@ -1,4 +1,7 @@
 import os
+import subprocess
+from datetime import datetime, timezone
+from typing import Optional
 import time
 import math
 import json
@@ -32,10 +35,15 @@ from typing import Optional
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from collections import Counter
+from snapshot import snapshot_listener
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
+EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
+RESTIC_REPOSITORY = os.getenv("RESTIC_REPOSITORY", "rest:http://finance:12345678@rest-server:8000/finance1/finance1")
+RESTIC_PASSWORD_FILE = os.getenv("RESTIC_PASSWORD_FILE", "/run/secrets/restic_repo_pass")
+RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 
 IS_LOCKED_DOWN = False
 
@@ -469,7 +477,6 @@ def broadcast_sync(operation, filename, content=""):
     print(f"[🍺 SYNC_OK] Received {ack_count} ACKs")
     connection.close()
 
-
 app = Flask(__name__)
 
 
@@ -826,6 +833,7 @@ if __name__ == "__main__":
     threading.Thread(target=lock_down_listener, daemon=True).start()
     threading.Thread(target=serve, daemon=True).start()    # listen sync command from other clients
     threading.Thread(target=sync_listener, daemon=True).start()
+    threading.Thread(target=snapshot_listener, daemon=True).start()
 
     # what to do when file operation monitored
     event_handler = EntropyMonitor()

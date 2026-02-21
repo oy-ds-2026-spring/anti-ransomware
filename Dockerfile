@@ -10,12 +10,12 @@ WORKDIR /app
 # RabbitMQ Address
 # CLIENT_ID can be override by docker-compose.yml
 ENV PYTHONUNBUFFERED=1 \
-    BROKER_HOST=rabbitmq \
-    MONITOR_DIR=/data \
-    CLIENT_ID=unknown-client \
-    TZ=Europe/Helsinki
+  BROKER_HOST=rabbitmq \
+  MONITOR_DIR=/data \
+  CLIENT_ID=unknown-client \
+  TZ=Europe/Helsinki
 # install system dependency
-RUN apt-get update && apt-get install -y procps tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y restic procps tzdata && rm -rf /var/lib/apt/lists/*
 
 # explicitly copy to the container: /app/requirements.txt
 COPY requirements.txt .
