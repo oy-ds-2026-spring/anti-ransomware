@@ -6,7 +6,7 @@ from watchdog.events import FileSystemEventHandler
 from client import config
 from client import utils
 from client import rabbitmq_handler
-import security
+from client import security
 from logger import Logger
 
 

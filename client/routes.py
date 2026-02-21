@@ -11,7 +11,7 @@ from client import config
 from client import utils
 from client.models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
 from client import rabbitmq_handler
-import security
+from client import security
 from logger import Logger
 
 app = Flask(__name__)
