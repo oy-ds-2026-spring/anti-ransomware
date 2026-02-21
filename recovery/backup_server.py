@@ -4,6 +4,8 @@ import time
 
 import pika
 from flask import Flask
+
+from database import SnapshotDB
 from scheduler import results_listener, snapshot_loop
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
@@ -28,6 +30,8 @@ def start_connection(username, password):
 
 def main():
     print("[INFO] Backup Service Starting...")
+
+    db = SnapshotDB("snapshots.db")
 
     conn1 = start_connection("guest", "guest")
     # Start listening to snapshot results

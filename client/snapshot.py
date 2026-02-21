@@ -14,11 +14,11 @@ RESTIC_REPOSITORY = os.getenv("RESTIC_REPOSITORY", "rest:http://finance:12345678
 RESTIC_PASSWORD_FILE = os.getenv("RESTIC_PASSWORD_FILE", "/run/secrets/restic_repo_pass")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 
-def publish_result(channel, client_id: str, snapshot_id: str, ok: bool, command_id: str, error: Optional[str] = None):
+def publish_result(channel, client_id: str, restic_snapshot_id: str, ok: bool, command_id: str, error: Optional[str] = None):
     msg = {
         "type": "SNAPSHOT_DONE" if ok else "SNAPSHOT_FAILED",
         "client_id": client_id,
-        "snapshot_id": snapshot_id,
+        "restic_snapshot_id": restic_snapshot_id,
         "command_id": command_id,
         "ts": int(time.time()),
         "error": error,
@@ -72,7 +72,7 @@ def snapshot_listener():
 
         except Exception as e:
             print(f"[{CLIENT_ID}] snapshot failed: {e}")
-            publish_result(channel, CLIENT_ID, snapshot_id="", ok=False, error=str(e))
+            publish_result(channel, CLIENT_ID, restic_snapshot_id="", ok=False, error=str(e))
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
     channel.basic_consume(queue=queue_name, on_message_callback=on_msg, auto_ack=False)

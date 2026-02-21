@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pika
 import requests
 
+from database import SnapshotDB
+
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
@@ -72,7 +74,7 @@ def commit_all_parallel(command_id: str, timeout: float = 2.0):
                 ok_all = False
     return ok_all, results
 
-def snapshot_loop(connection: pika.BlockingConnection):
+def snapshot_loop(connection: pika.BlockingConnection, db: SnapshotDB):
 
     channel = connection.channel()
 
@@ -130,7 +132,7 @@ def snapshot_loop(connection: pika.BlockingConnection):
 
         time.sleep(60)
 
-def results_listener(connection: pika.BlockingConnection):
+def results_listener(connection: pika.BlockingConnection, db: SnapshotDB):
 
     ch = connection.channel()
 
@@ -144,6 +146,7 @@ def results_listener(connection: pika.BlockingConnection):
             command_id = msg.get("command_id")
             client_id = msg.get("client_id")
             msg_type = msg.get("type")
+            restic_snapshot_id = msg.get("restic_snapshot_id")
 
             if not command_id or not client_id:
                 ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -152,6 +155,7 @@ def results_listener(connection: pika.BlockingConnection):
             # Collect successful nodes
             if msg_type == "SNAPSHOT_DONE":
                 pending.setdefault(command_id, {})[client_id] = msg.get("restic_snapshot_id", "")
+                db.upsert_result(command_id, client_id, status="DONE", restic_snapshot_id=restic_snapshot_id)
 
                 # If all successful, resume all write permissions
                 if set(pending[command_id].keys()) >= REQUIRED:
@@ -159,8 +163,6 @@ def results_listener(connection: pika.BlockingConnection):
 
                     ok_all, commit_results = commit_all_parallel(command_id)
                     print(f"[backup] commit results for {command_id}: {commit_results}")
-
-                    # TODO: Add Successful snapshots to db
 
                     if ok_all:
                         print(f"[backup] writes resumed for {command_id}")
@@ -171,6 +173,7 @@ def results_listener(connection: pika.BlockingConnection):
 
             elif msg_type == "SNAPSHOT_FAILED":
                 print(f"[backup] snapshot failed for {command_id} on {client_id}: {msg.get('error')}")
+                db.upsert_result(command_id, client_id, status="FAILED", error=msg.get('error'))
 
                 # resume write permission anyway if one failed
                 ok_all, commit_results = commit_all_parallel(command_id)
