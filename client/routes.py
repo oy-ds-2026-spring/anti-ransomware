@@ -9,6 +9,7 @@ from flask import Flask, jsonify, request
 import config
 import utils
 from models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
+import rabbitmq_handler
 
 app = Flask(__name__)
 
@@ -158,7 +159,7 @@ def create_file():
         utils.local_create(req.filename, req.content)
 
         # broadcast to others via RabbitMQ
-        broadcast_sync("CREATE", req.filename, req.content)
+        rabbitmq_handler.broadcast_sync("CREATE", req.filename, req.content)
 
         # log locally and notify recovery service
         try:
@@ -206,7 +207,7 @@ def write_file():
         new_content = utils.local_write(req.filename, req.content)
 
         # broadcast to others via RabbitMQ
-        broadcast_sync("WRITE", req.filename, req.content)
+        rabbitmq_handler.broadcast_sync("WRITE", req.filename, req.content)
 
         # log locally and notify recovery service
         try:
@@ -257,7 +258,7 @@ def delete_file():
         utils.local_delete(req.filename)
 
         # broadcast to others via RabbitMQ
-        broadcast_sync("DELETE", req.filename)
+        rabbitmq_handler.broadcast_sync("DELETE", req.filename)
 
         # log locally and notify recovery service
         try:

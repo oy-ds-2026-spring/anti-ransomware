@@ -10,15 +10,21 @@ from monitor import EntropyMonitor
 
 if __name__ == "__main__":
     print(f"[INFO] Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
+
+    # start fishing
     utils.fishing(config.MONITOR_DIR)
+
+    # start listening to mq and rpc calls ################################
+
     # listen command from detection engine
     threading.Thread(target=rabbitmq_handler.lock_down_listener, daemon=True).start()
-    threading.Thread(
-        target=grpc_server.serve, daemon=True
-    ).start()  # listen sync command from other clients
+    # listen sync command from other clients
     threading.Thread(target=rabbitmq_handler.sync_listener, daemon=True).start()
 
-    # what to do when file operation monitored
+    # start gRPC server
+    threading.Thread(target=grpc_server.serve, daemon=True).start()
+
+    # watchdog: what to do when file operation observed ###################
     event_handler = EntropyMonitor()
 
     # initialize watchdog
@@ -29,5 +35,5 @@ if __name__ == "__main__":
     observer.schedule(event_handler, path=config.MONITOR_DIR, recursive=True)
     observer.start()
 
-    # start waiting for attacker(?)
+    # start flask interface ###############################################
     routes.app.run(host="0.0.0.0", port=5000)
