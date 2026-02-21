@@ -1,6 +1,3 @@
-#   docker-compose up -d          # Start all services
-#   docker-compose down           # Stop all services
-#   docker-compose logs -f        # View logs
 version: '3.8'
 
 services:
@@ -61,18 +58,18 @@ services:
     networks:
       - ransom_net
 
-  # recovery Service
-  recovery-service:
-    build: .
-    container_name: recovery-service
-    command: python ./recovery/recovery.py
-    volumes:
-      - .:/app
-      - ./recovery/recovery_logs:/logs # file writing log, for further recovery
-    depends_on:
-      - backup-storage
-    networks:
-      - ransom_net
+#  # recovery Service
+#  recovery-service:
+#    build: .
+#    container_name: recovery-service
+#    command: python ./recovery/recovery.py
+#    volumes:
+#      - .:/app
+#      - ./recovery/recovery_logs:/logs # file writing log, for further recovery
+#    depends_on:
+#      - backup-storage
+#    networks:
+#      - ransom_net
 
   # backup storage
   backup-storage:
@@ -90,7 +87,14 @@ services:
     build: .
     container_name: client-finance1
     hostname: client-finance1
-    command: python -m client.client
+    command: >
+      sh -lc '
+        set -e;
+        echo "[client] checking restic repo...";
+        restic snapshots >/dev/null 2>&1 || restic init;
+        echo "[client] restic repo ok";
+        exec python -m client.client
+      '
     expose:
       - "50051"  # gRPC Lockdown port
       - "4321"
@@ -98,12 +102,17 @@ services:
       - CLIENT_ID=finance1
       - MONITOR_DIR=/data
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance4:4321
+      - RESTIC_REPOSITORY=rest:http://finance1:12345678@rest-server:8000/finance1/finance1
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
+      - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance1:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      rest-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -113,7 +122,14 @@ services:
     build: .
     container_name: client-finance2
     hostname: client-finance2
-    command: python -m client.client
+    command: >
+      sh -lc '
+        set -e;
+        echo "[client] checking restic repo...";
+        restic snapshots >/dev/null 2>&1 || restic init;
+        echo "[client] restic repo ok";
+        exec python -m client.client
+      '
     expose:
       - "50051"  # gRPC Lockdown port
       - "4321"
@@ -121,12 +137,17 @@ services:
       - CLIENT_ID=finance2
       - MONITOR_DIR=/data
       - PEERS=client-finance1:4321,client-finance3:4321,client-finance4:4321
+      - RESTIC_REPOSITORY=rest:http://finance2:12345678@rest-server:8000/finance2/finance2
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
+      - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance2:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      rest-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -136,7 +157,14 @@ services:
     build: .
     container_name: client-finance3
     hostname: client-finance3
-    command: python -m client.client
+    command: >
+      sh -lc '
+        set -e;
+        echo "[client] checking restic repo...";
+        restic snapshots >/dev/null 2>&1 || restic init;
+        echo "[client] restic repo ok";
+        exec python -m client.client
+      '
     expose:
       - "50051"  # gRPC Lockdown port
       - "4321"
@@ -144,12 +172,17 @@ services:
       - CLIENT_ID=finance3
       - MONITOR_DIR=/data
       - PEERS=client-finance1:4321,client-finance2:4321,client-finance4:4321
+      - RESTIC_REPOSITORY=rest:http://finance3:12345678@rest-server:8000/finance3/finance3
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
+      - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance3:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      rest-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -159,7 +192,14 @@ services:
     build: .
     container_name: client-finance4
     hostname: client-finance4
-    command: python -m client.client
+    command: >
+      sh -lc '
+        set -e;
+        echo "[client] checking restic repo...";
+        restic snapshots >/dev/null 2>&1 || restic init;
+        echo "[client] restic repo ok";
+        exec python -m client.client
+      '
     expose:
       - "50051"  # gRPC Lockdown port
       - "4321"
@@ -167,12 +207,17 @@ services:
       - CLIENT_ID=finance4
       - MONITOR_DIR=/data
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance1:4321
+      - RESTIC_REPOSITORY=rest:http://finance4:12345678@rest-server:8000/finance4/finance4
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
+      - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance4:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      rest-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -216,6 +261,29 @@ services:
       - .:/app
     networks:
       - ransom_net
+
+  # restic repository HTTP backend
+  rest-server:
+    image: restic/rest-server:latest
+    container_name: rest-server
+    command:
+      [
+        "rest-server",
+        "--path", "/data",
+        "--listen", "0.0.0.0:8000",
+        "--private-repos",
+        "--htpasswd-file", "/run/secrets/htpasswd"
+      ]
+    volumes:
+      - ./secure_backups/restic_repos:/data
+      - ./secure_backups/restic_repos/.htpasswd:/run/secrets/htpasswd:ro
+    networks:
+      - ransom_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/ >/dev/null 2>&1 || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   ransom_net:
