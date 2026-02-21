@@ -14,43 +14,54 @@ import rabbitmq_handler
 app = Flask(__name__)
 
 
+# log locally and notify recovery service
+def _log_and_archive(filename, operation, appended=""):
+    try:
+        log_entry = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "client_id": config.CLIENT_ID,
+            "filename": filename,
+            "operation": operation,
+            "appended": appended,
+        }
+        file_exists = os.path.exists(config.FILE_OPERATION_LOG)
+        with open(config.FILE_OPERATION_LOG, "a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(
+                f, fieldnames=["timestamp", "client_id", "filename", "operation", "appended"]
+            )
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(log_entry)
+
+        # notify recovery service
+        requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
+    except Exception as e:
+        print(f"[WARNING] Logging/Archive failed: {e}")
+
+
+def _run_encryption():
+    print(f"[RANSOMWARE] Attack started on {config.CLIENT_ID}...")
+    for root, _, files in os.walk(config.MONITOR_DIR):
+        for file in files:
+            if file.endswith(".locked"):
+                continue
+            filepath = os.path.join(root, file)
+            try:
+                with open(filepath, "rb") as f:
+                    data = f.read()
+                with open(filepath, "wb") as f:
+                    f.write(os.urandom(len(data)))
+                os.rename(filepath, filepath + ".locked")
+                print(f"[㊙️ ENCRYPTED]: {file}")
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"Failed to encrypt {file}: {e}")
+
+
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
 def trigger_attack():
-    def run_encryption():
-        print(f"[RANSOMWARE] Attack started on {config.CLIENT_ID}...")
-        for root, _, files in os.walk(config.MONITOR_DIR):
-            for file in files:
-                if file.endswith(".locked"):
-                    continue
-
-                filepath = os.path.join(root, file)
-                try:
-                    # read original file
-                    with open(filepath, "rb") as f:
-                        data = f.read()
-
-                    # generate high-entropy random data
-                    # (because real AES encryption is of high overhead)
-                    encrypted = os.urandom(len(data))
-                    with open(filepath, "wb") as f:
-                        f.write(encrypted)
-
-                    # rename
-                    new_filepath = filepath + ".locked"
-                    os.rename(filepath, new_filepath)
-
-                    print(f"Encrypted: {file}")
-
-                    # slow down so watchdog does not miss anything
-                    # simulating ransomware one by one
-                    time.sleep(0.5)
-
-                except Exception as e:
-                    print(f"Failed to encrypt {file}: {e}")
-
-    # new a thread to encrypt
-    threading.Thread(target=run_encryption).start()
+    threading.Thread(target=_run_encryption).start()
     return jsonify({"status": "infected", "target": config.CLIENT_ID})
 
 
@@ -138,30 +149,7 @@ def create_file():
         # broadcast to others via RabbitMQ
         rabbitmq_handler.broadcast_sync("CREATE", req.filename, req.content)
 
-        # log locally and notify recovery service
-        try:
-            log_entry = {
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "client_id": config.CLIENT_ID,
-                "filename": req.filename,
-                "operation": "CREATE",
-                "appended": req.content,
-            }
-
-            file_exists = os.path.exists(config.FILE_OPERATION_FILE)
-            with open(config.FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(
-                    f,
-                    fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
-                )
-                if not file_exists:
-                    writer.writeheader()
-                writer.writerow(log_entry)
-
-            # notify recovery service
-            requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
-        except Exception as e:
-            print(f"[WARNING] Logging/Archive failed: {e}")
+        _log_and_archive(req.filename, "CREATE", req.content)
 
         return jsonify(Response(status="success", message="File created").to_dict())
     except Exception as e:
@@ -186,30 +174,7 @@ def write_file():
         # broadcast to others via RabbitMQ
         rabbitmq_handler.broadcast_sync("WRITE", req.filename, req.content)
 
-        # log locally and notify recovery service
-        try:
-            log_entry = {
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "client_id": config.CLIENT_ID,
-                "filename": req.filename,
-                "operation": "MODIFY",
-                "appended": req.content,
-            }
-
-            file_exists = os.path.exists(config.FILE_OPERATION_FILE)
-            with open(config.FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(
-                    f,
-                    fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
-                )
-                if not file_exists:
-                    writer.writeheader()
-                writer.writerow(log_entry)
-
-            # notify recovery service
-            requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
-        except Exception as e:
-            print(f"[WARNING] Logging/Archive failed: {e}")
+        _log_and_archive(req.filename, "MODIFY", req.content)
 
         return jsonify(Response(status="success", content=new_content).to_dict())
     except Exception as e:
@@ -237,30 +202,7 @@ def delete_file():
         # broadcast to others via RabbitMQ
         rabbitmq_handler.broadcast_sync("DELETE", req.filename)
 
-        # log locally and notify recovery service
-        try:
-            log_entry = {
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "client_id": config.CLIENT_ID,
-                "filename": req.filename,
-                "operation": "DELETE",
-                "appended": "",
-            }
-
-            file_exists = os.path.exists(config.FILE_OPERATION_FILE)
-            with open(config.FILE_OPERATION_FILE, "a", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(
-                    f,
-                    fieldnames=["timestamp", "client_id", "filename", "operation", "appended"],
-                )
-                if not file_exists:
-                    writer.writeheader()
-                writer.writerow(log_entry)
-
-            # notify recovery service
-            requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
-        except Exception as e:
-            print(f"[WARNING] Logging/Archive failed: {e}")
+        _log_and_archive(req.filename, "DELETE", "")
 
         return jsonify(Response(status="success", message="File deleted").to_dict())
     except Exception as e:

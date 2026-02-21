@@ -4,7 +4,7 @@ import threading
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
-FILE_OPERATION_FILE = "/logs/file_operation_log.csv"
+FILE_OPERATION_LOG = "/logs/file_operation_log.csv"
 
 IS_LOCKED_DOWN = False
 WRITE_PERMISSION = threading.Event()
