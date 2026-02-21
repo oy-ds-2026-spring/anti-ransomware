@@ -5,8 +5,8 @@ import time
 import pika
 from flask import Flask
 
-from database import SnapshotDB
-from scheduler import results_listener, snapshot_loop
+from recovery.database import SnapshotDB
+from recovery.scheduler import results_listener, snapshot_loop
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 app = Flask(__name__)

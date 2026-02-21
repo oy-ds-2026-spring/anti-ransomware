@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pika
 import requests
 
-from database import SnapshotDB
+from recovery.database import SnapshotDB
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
