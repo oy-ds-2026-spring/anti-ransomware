@@ -6,6 +6,7 @@ from watchdog.events import FileSystemEventHandler
 import config
 import utils
 import rabbitmq_handler
+import security
 from logger import Logger
 
 
@@ -49,18 +50,20 @@ class EntropyMonitor(FileSystemEventHandler):
         if filename.endswith(".locked") or ".tmp" in filename:
             return
 
+        # baits detect
         if basename in config.BAITS:
-            Logger.warning(f"Confirmed Attack: Baits File [{basename}] is modified.")
-            config.IS_LOCKED_DOWN = True
+            security.execute_lockdown(trigger_source="Monitor (Canary)", reason=f"Baits File [{basename}] is modified")
             rabbitmq_handler.send_msg(filename, 8.0, "BAIT_TRIGGERED")
             return
 
+        # freq detect
         self.modification_timestamps.append(time.time())
         if self.check_modify_velocity():
-            Logger.warning(f"Possible Attack: File modify freq exceeding 10 times/sec.")
+            security.execute_lockdown(trigger_source="Monitor (Velocity)", reason="File modify freq exceeding 10 times/sec")
             rabbitmq_handler.send_msg(filename, 8.0, "VELOCITY_ATTACK")
             return
 
+        # file size detect
         try:
             current_size = os.path.getsize(filename)
             is_suspicious_size, ratio = self.check_size_change(filename, current_size)
@@ -71,19 +74,18 @@ class EntropyMonitor(FileSystemEventHandler):
         except OSError:
             pass
 
+        # header detect
         ext = os.path.splitext(filename)[1].lower()
         if ext in config.PROPER_HEADS:
             if utils.is_header_modified(filename, ext):
-                Logger.warning(
-                    f"Confirmed Attack: Detected {ext} file header is modified: {filename}"
-                )
-                config.IS_LOCKED_DOWN = True
+                security.execute_lockdown(trigger_source="Monitor (Magic Bytes)", reason=f"Detected {ext} file header modified")
                 rabbitmq_handler.send_msg(filename, 8.0, "MODIFY")
             return
 
         if self._should_ignore(filename):
             return
 
+        # sample entropy detect
         data = utils.read_sampled_data(filename)
         if not data:
             return

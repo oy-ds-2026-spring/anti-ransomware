@@ -10,6 +10,7 @@ import config
 import utils
 from models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
 import rabbitmq_handler
+import security
 from logger import Logger
 
 app = Flask(__name__)
@@ -68,9 +69,18 @@ def trigger_attack():
 
 @app.route("/unlock", methods=["GET", "POST"])
 def unlock_system():
-    config.IS_LOCKED_DOWN = False
-    Logger.unlock("System unlocked")
-    return jsonify({"status": "unlocked"})
+    # config.IS_LOCKED_DOWN = False
+    # Logger.unlock("System unlocked")
+    # return jsonify({"status": "unlocked"})
+    success, message = security.execute_unlock(
+        trigger_source="API Request", 
+        reason="Manual unlock via /unlock endpoint"
+    )
+    
+    if success:
+        return jsonify({"status": "unlocked", "message": message})
+    else:
+        return jsonify({"status": "error", "message": message}), 500
 
 
 # snapshot ###########################################
