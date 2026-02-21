@@ -310,7 +310,7 @@ function updateGraphics() {
   topologyChart.setOption({ graphic: graphics });
 }
 
-// button attack/normal
+// button attack
 async function triggerAttack() {
   try {
     // GET request

@@ -54,29 +54,6 @@ def trigger_attack():
     return jsonify({"status": "infected", "target": config.CLIENT_ID})
 
 
-# simulate normal operation
-@app.route("/normal", methods=["POST"])
-def trigger_normal():
-    config.IS_LOCKED_DOWN = False
-
-    target_file = None
-    for root, _, files in os.walk(config.MONITOR_DIR):
-        if files:
-            target_file = os.path.join(root, files[0])
-            break
-
-    if target_file:
-        try:
-            with open(target_file, "a") as f:
-                f.write("\nhello world")
-            print(f"[NORMAL] Modified {target_file}")
-            return jsonify({"status": "success", "file": target_file})
-        except Exception as e:
-            return jsonify({"status": "error", "message": str(e)}), 500
-
-    return jsonify({"status": "no_files_found"}), 404
-
-
 @app.route("/unlock", methods=["GET", "POST"])
 def unlock_system():
     config.IS_LOCKED_DOWN = False

@@ -66,7 +66,7 @@ def save_positions():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# attack/normal
+# attack
 @app.route("/dashboard/attack", methods=["GET"])
 def trigger_action():
     """
@@ -80,7 +80,7 @@ def trigger_action():
         JSON response indicating the status of the command transmission.
     """
     # target: gateway
-    # action: attack/normal
+    # action: attack
     url = f"http://finance-gateway:9000/finance/attack"
     try:
         # operation
