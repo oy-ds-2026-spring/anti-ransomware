@@ -1,6 +1,3 @@
-import os
-from os import path
-import stat
 import grpc
 from concurrent import futures
 
@@ -17,11 +14,12 @@ class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
             print(f"[{config.CLIENT_ID}]: {msg}")
             return lockdown_pb2.LockdownResponse(success=False, status_message=msg)
 
-        print(f"[{config.CLIENT_ID}] gRPC received. threat_id: {request.threat_id}, reason: {request.reason}")
+        print(
+            f"[{config.CLIENT_ID}] gRPC received. threat_id: {request.threat_id}, reason: {request.reason}"
+        )
 
         success, msg = execute_lockdown(
-            trigger_source="gRPC (Detection Service)", 
-            reason=request.reason
+            trigger_source="gRPC (Detection Service)", reason=request.reason
         )
 
         return lockdown_pb2.LockdownResponse(success=success, status_message=msg)
