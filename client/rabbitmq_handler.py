@@ -45,8 +45,8 @@ def _on_sync_message(ch, method, properties, body):
 # mq connectionection
 def _get_channel():
     credentials = pika.PlainCredentials("guest", "guest")
-    connection = pika.Blockingconnectionection(
-        pika.connectionectionParameters(host=config.BROKER_HOST, credentials=credentials)
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(host=config.BROKER_HOST, credentials=credentials)
     )
     return connection, connection.channel()
 
