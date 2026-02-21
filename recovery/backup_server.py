@@ -11,6 +11,7 @@ import pika
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
+RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 app = Flask(__name__)
 
 FINANCE_NODES = [
@@ -87,7 +88,7 @@ def snapshot_loop(channel):
     while True:
         msg = {
             "type": "REGULAR_SNAPSHOT",
-            "snapshot_id": str(uuid.uuid4()),
+            "command_id": str(uuid.uuid4()),
             "ts": int(time.time()),
         }
 
@@ -101,13 +102,34 @@ def snapshot_loop(channel):
             ),
         )
 
-        print(f"[backup] broadcast snapshot: {msg['snapshot_id']}")
+        print(f"[backup] broadcast snapshot: {msg['command_id']}")
         time.sleep(60)
+
+def results_listener():
+    conn = pika.BlockingConnection(
+        pika.ConnectionParameters(host=BROKER_HOST, credentials=pika.PlainCredentials("guest", "guest"))
+    )
+    ch = conn.channel()
+
+    ch.queue_declare(queue=RESULT_QUEUE, durable=True)
+
+    def on_result(ch, method, properties, body):
+        msg = json.loads(body)
+        # TODO: 可以在这里按 command_id 汇总 4 个节点的完成情况
+        print(f"[backup] got result: {msg}")
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    ch.basic_consume(queue=RESULT_QUEUE, on_message_callback=on_result, auto_ack=False)
+    print("[backup] listening snapshot_results...")
+    ch.start_consuming()
 
 def main():
     print("Backup Service Starting...")
 
-    # 1. connect to rabbitmq
+    t = threading.Thread(target=results_listener, daemon=True)
+    t.start()
+
+    # connect to rabbitmq
     connection = None
     while connection is None:
         try:
