@@ -139,10 +139,16 @@ def msg_callback(ch, method, properties, body):
         file_path = msg.get("file_path", "?")
         entropy = float(msg.get("entropy", 0))
         event_type = msg.get("event_type", "UNKNOWN")
+        
+        # test vector clock
+        v_clock = msg.get("v_clock", {})
 
         # log current msg
         log_msg_processing(client_id, file_path, entropy, event_type)
         Logger.analyze(f" {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
+        
+        # test vector clock
+        print(f"[{client_id}] | {event_type} | {os.path.basename(file_path)} | Entropy: {entropy:.2f} | Clock: {v_clock}")
 
         if event_type == "LOCK_DOWN":
             status = "Locked"

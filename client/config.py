@@ -6,6 +6,16 @@ MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
 FILE_OPERATION_LOG = "/logs/file_operation_log.csv"
 
+VECTOR_CLOCK = {
+    "finance1": 0,
+    "finance2": 0,
+    "finance3": 0,
+    "finance4": 0,
+    CLIENT_ID: 0 
+}
+
+CLOCK_LOCK = threading.Lock()
+
 IS_LOCKED_DOWN = False
 WRITE_PERMISSION = threading.Event()
 WRITE_PERMISSION.set()  # initially allowed

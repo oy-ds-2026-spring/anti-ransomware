@@ -17,6 +17,10 @@ def _on_sync_message(ch, method, properties, body):
 
     # wait for snapshot if needed
     config.WRITE_PERMISSION.wait()
+    
+    # get and merge the clock
+    incoming_clock = msg.get("v_clock", {})
+    utils.merge_clock(incoming_clock)
 
     op, filename, content = msg.get("operation"), msg.get("filename"), msg.get("content", "")
 
@@ -45,8 +49,11 @@ def _on_sync_message(ch, method, properties, body):
 # mq connectionection
 def _get_channel():
     credentials = pika.PlainCredentials("guest", "guest")
-    connection = pika.Blockingconnectionection(
-        pika.connectionectionParameters(host=config.BROKER_HOST, credentials=credentials)
+    # connection = pika.Blockingconnectionection( # <-- lol what is this "Blockingconnectionection"
+    #     pika.connectionectionParameters(host=config.BROKER_HOST, credentials=credentials)
+    # )
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(host=config.BROKER_HOST, credentials=credentials)
     )
     return connection, connection.channel()
 
@@ -64,6 +71,7 @@ def send_msg(file_path, entropy, event_type):
             "entropy": entropy,
             "event_type": event_type,
             "timestamp": time.time(),
+            "v_clock": utils.get_clock()
         }
 
         channel.basic_publish(exchange="", routing_key="file_events", body=json.dumps(payload))
@@ -114,7 +122,7 @@ def sync_listener():
             time.sleep(5)
 
 
-def broadcast_sync(operation, filename, content=""):
+def broadcast_sync(operation, filename, content="", v_clock=None):
     # connect
     connection, channel = _get_channel()
     channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
@@ -127,6 +135,7 @@ def broadcast_sync(operation, filename, content=""):
         "operation": operation,
         "filename": filename,
         "content": content,
+        "v_clock": v_clock or utils.get_clock()
     }
 
     channel.basic_publish(

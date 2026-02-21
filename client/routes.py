@@ -147,6 +147,7 @@ def create_file():
     try:
         utils.local_create(req.filename, req.content)
 
+        current_clock = utils.increment_clock()
         # broadcast to others via RabbitMQ
         rabbitmq_handler.broadcast_sync("CREATE", req.filename, req.content)
 
@@ -172,8 +173,9 @@ def write_file():
     try:
         new_content = utils.local_write(req.filename, req.content)
 
-        # broadcast to others via RabbitMQ
-        rabbitmq_handler.broadcast_sync("WRITE", req.filename, req.content)
+        current_clock = utils.increment_clock()
+        # broadcast to others via RabbitMQ # with clock
+        rabbitmq_handler.broadcast_sync("WRITE", req.filename, req.content, current_clock)
 
         _log_and_archive(req.filename, "MODIFY", req.content)
 
@@ -199,9 +201,10 @@ def delete_file():
             return jsonify(Response(error="File not found").to_dict()), 404
 
         utils.local_delete(req.filename)
-
-        # broadcast to others via RabbitMQ
-        rabbitmq_handler.broadcast_sync("DELETE", req.filename)
+        
+        current_clock = utils.increment_clock()
+        # broadcast to others via RabbitMQ # with clock
+        rabbitmq_handler.broadcast_sync("DELETE", req.filename, current_clock)
 
         _log_and_archive(req.filename, "DELETE", "")
 
