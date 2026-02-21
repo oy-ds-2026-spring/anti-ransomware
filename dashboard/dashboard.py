@@ -19,7 +19,7 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/api/state")
+@app.route("/dashboard/state")
 def get_state():
     # read log
     if os.path.exists(STATE_FILE):
@@ -44,7 +44,7 @@ def get_state():
     )
 
 
-@app.route("/api/positions", methods=["GET"])
+@app.route("/dashboard/positions", methods=["GET"])
 def get_positions():
     if os.path.exists(POSITIONS_FILE):
         try:
@@ -55,7 +55,7 @@ def get_positions():
     return jsonify({})
 
 
-@app.route("/api/positions", methods=["POST"])
+@app.route("/dashboard/positions", methods=["POST"])
 def save_positions():
     try:
         data = request.get_json()
@@ -67,15 +67,25 @@ def save_positions():
 
 
 # attack/normal
-@app.route("/api/action/<target>/<action>", methods=["POST"])
-def trigger_action(target, action):
-    # target: finance1/finance2/finance3/finance4
+@app.route("/dashboard/attack", methods=["GET"])
+def trigger_action():
+    """
+    Trigger an attack simulation via the gateway.
+
+    This endpoint sends a request to the finance-gateway to initiate an attack
+    on the primary finance node. It is used by the frontend dashboard to
+    simulate a ransomware attack.
+
+    Returns:
+        JSON response indicating the status of the command transmission.
+    """
+    # target: gateway
     # action: attack/normal
-    url = f"http://client-{target}:5000/{action}"
+    url = f"http://finance-gateway:9000/finance/attack"
     try:
         # operation
-        requests.post(url, timeout=2)
-        return jsonify({"status": "success", "message": f"Sent {action} to {target}"})
+        requests.get(url, timeout=2)
+        return jsonify({"status": "success", "message": f"Sent attack to gateway"})
     except Exception as e:
         print(f"Action failed: {e}")
         # return 200 anyway
@@ -89,4 +99,3 @@ if __name__ == "__main__":
 
     print("🌐 Dashboard starting on port 8501...")
     app.run(host="0.0.0.0", port=8501)
-    

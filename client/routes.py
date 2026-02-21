@@ -15,7 +15,7 @@ app = Flask(__name__)
 
 
 # simulate being attacked
-@app.route("/attack", methods=["POST"])
+@app.route("/attack", methods=["GET"])
 def trigger_attack():
     def run_encryption():
         print(f"[RANSOMWARE] Attack started on {config.CLIENT_ID}...")
