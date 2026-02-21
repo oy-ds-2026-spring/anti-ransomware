@@ -19,8 +19,9 @@ app = Flask(__name__)
 Swagger(app)
 
 
-# log locally and notify recovery service
 def _log_and_archive(filename, operation, appended=""):
+    """log locally and notify recovery service"""
+
     try:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -45,6 +46,7 @@ def _log_and_archive(filename, operation, appended=""):
 
 
 def _run_encryption(monitor_dir, client_id):
+    """generate some random bytes and cover the original file"""
     try:
         # drop privileges to non-root user
         os.setgid(1000)
@@ -293,13 +295,12 @@ def create_file():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename is required").to_dict()), 400
 
-    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
         utils.local_create(req.filename, req.content)
 
-        current_clock = utils.increment_clock()
         # broadcast to others via RabbitMQ
-        rabbitmq_handler.broadcast_sync("CREATE", req.filename, req.content)
+        current_clock = utils.increment_clock()
+        rabbitmq_handler.broadcast_sync("CREATE", req.filename, req.content, current_clock)
 
         _log_and_archive(req.filename, "CREATE", req.content)
 
@@ -346,12 +347,11 @@ def write_file():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename and content are required").to_dict()), 400
 
-    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
         new_content = utils.local_write(req.filename, req.content)
 
-        current_clock = utils.increment_clock()
         # broadcast to others via RabbitMQ # with clock
+        current_clock = utils.increment_clock()
         rabbitmq_handler.broadcast_sync("WRITE", req.filename, req.content, current_clock)
 
         _log_and_archive(req.filename, "MODIFY", req.content)
@@ -405,8 +405,8 @@ def delete_file():
 
         utils.local_delete(req.filename)
 
-        current_clock = utils.increment_clock()
         # broadcast to others via RabbitMQ # with clock
+        current_clock = utils.increment_clock()
         rabbitmq_handler.broadcast_sync("DELETE", req.filename, current_clock)
 
         _log_and_archive(req.filename, "DELETE", "")

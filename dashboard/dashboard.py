@@ -66,9 +66,9 @@ def save_positions():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# attack
+# attack, called by `Attack` button
 @app.route("/dashboard/attack", methods=["GET"])
-def trigger_action():
+def trigger_attack():
     """
     Trigger an attack simulation via the gateway.
 
