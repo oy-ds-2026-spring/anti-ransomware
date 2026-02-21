@@ -1,10 +1,13 @@
 import os
+from os import path
 import stat
 import grpc
 from concurrent import futures
-import lockdown_pb2
-import lockdown_pb2_grpc
-import config
+
+from common import lockdown_pb2
+from common import lockdown_pb2_grpc
+from client import config
+from client.security import execute_lockdown
 
 
 class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
@@ -14,30 +17,14 @@ class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
             print(f"[{config.CLIENT_ID}]: {msg}")
             return lockdown_pb2.LockdownResponse(success=False, status_message=msg)
 
-        print(
-            f"[{config.CLIENT_ID}] received. threat_id: {request.threat_id}, reason: {request.reason}"
+        print(f"[{config.CLIENT_ID}] gRPC received. threat_id: {request.threat_id}, reason: {request.reason}")
+
+        success, msg = execute_lockdown(
+            trigger_source="gRPC (Detection Service)", 
+            reason=request.reason
         )
 
-        try:
-            self.lock_directory_readonly(config.MONITOR_DIR)
-            config.IS_LOCKED_DOWN = True
-            success_msg = f"Directory {config.MONITOR_DIR} successfully locked (Read-Only)."
-            print(f"[{config.CLIENT_ID}]: {success_msg}\n")
-            return lockdown_pb2.LockdownResponse(success=True, status_message=success_msg)
-        except Exception as e:
-            error_msg = f"Failed to lock directory: {e}"
-            print(f"[{config.CLIENT_ID}]: {error_msg}")
-            return lockdown_pb2.LockdownResponse(success=False, status_message=error_msg)
-
-    def lock_directory_readonly(self, path):
-        READ_ONLY = stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH
-        DIR_READ_ONLY = READ_ONLY | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-        os.chmod(path, DIR_READ_ONLY)
-        for root, dirs, files in os.walk(path):
-            for d in dirs:
-                os.chmod(os.path.join(root, d), DIR_READ_ONLY)
-            for f in files:
-                os.chmod(os.path.join(root, f), READ_ONLY)
+        return lockdown_pb2.LockdownResponse(success=success, status_message=msg)
 
 
 def serve():

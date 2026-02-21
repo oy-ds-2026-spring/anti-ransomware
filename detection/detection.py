@@ -5,8 +5,8 @@ import time
 import sys
 import grpc
 
-import lockdown_pb2
-import lockdown_pb2_grpc
+from common import lockdown_pb2
+from common import lockdown_pb2_grpc
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import Logger

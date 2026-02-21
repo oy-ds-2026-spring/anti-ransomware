@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import lockdown_pb2 as lockdown__pb2
+from common import lockdown_pb2 as lockdown__pb2
 
 
 class LockdownServiceStub(object):
@@ -15,7 +15,7 @@ class LockdownServiceStub(object):
             channel: A grpc.Channel.
         """
         self.TriggerLockdown = channel.unary_unary(
-                '/security.LockdownService/TriggerLockdown',
+                '/common.LockdownService/TriggerLockdown',
                 request_serializer=lockdown__pb2.LockdownRequest.SerializeToString,
                 response_deserializer=lockdown__pb2.LockdownResponse.FromString,
                 )
@@ -41,7 +41,7 @@ def add_LockdownServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'security.LockdownService', rpc_method_handlers)
+            'common.LockdownService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
@@ -60,7 +60,7 @@ class LockdownService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/security.LockdownService/TriggerLockdown',
+        return grpc.experimental.unary_unary(request, target, '/common.LockdownService/TriggerLockdown',
             lockdown__pb2.LockdownRequest.SerializeToString,
             lockdown__pb2.LockdownResponse.FromString,
             options, channel_credentials,
