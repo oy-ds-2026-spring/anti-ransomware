@@ -11,8 +11,10 @@ ENTROPY_THRESHOLD = 7.5
 # global state, real-time maintained in memory, written to log after update
 # for logging, for Dashboard
 current_state = {
-    "finance": "Safe",
-    "rnd": "Safe",
+    "finance1": "Safe",
+    "finance2": "Safe",
+    "finance3": "Safe",
+    "finance4": "Safe",
     "last_entropy": 0.0,
     "logs": [],  # latest log
     "entropy_history": [],  # for diagram
@@ -28,7 +30,7 @@ def save_state():
         with open(LOG_FILE, "w") as f:
             json.dump(current_state, f)
     except Exception as e:
-        print(f"⚠️ Dashboard update failed: {e}")
+        print(f"[WARNING] Dashboard update failed: {e}")
 
 
 # compose new log
@@ -36,10 +38,14 @@ def log_client_status(client_id, status, entropy, message):
     global current_state
 
     # 1. department status
-    if "Finance" in client_id:
-        current_state["finance"] = status
-    elif "RnD" in client_id:
-        current_state["rnd"] = status
+    if "finance1" in client_id:
+        current_state["finance1"] = status
+    elif "finance2" in client_id:
+        current_state["finance2"] = status
+    elif "finance3" in client_id:
+        current_state["finance3"] = status
+    elif "finance4" in client_id:
+        current_state["finance4"] = status
 
     # 2. last_entropy
     current_state["last_entropy"] = entropy
@@ -70,9 +76,9 @@ def log_command_lock_down(client_id, timestamp):
 
 
 # log which msg I'm processing, for dashboard
-def log_msg_processing(file_path, entropy, event_type):
+def log_msg_processing(client_id, file_path, entropy, event_type):
     timestamp = time.strftime("%H:%M:%S")
-    log_msg = f"[{timestamp}] Analyzing: {os.path.basename(file_path)} | {event_type} | Entropy: {entropy:.2f}"
+    log_msg = f"[{timestamp}] {client_id} | {os.path.basename(file_path)} | {event_type} | Entropy: {entropy:.2f}"
     current_state["processing_logs"].append(log_msg)
     if len(current_state["processing_logs"]) > 50:
         current_state["processing_logs"].pop(0)
@@ -106,8 +112,8 @@ def msg_callback(ch, method, properties, body):
         event_type = msg.get("event_type", "UNKNOWN")
 
         # log current msg
-        log_msg_processing(file_path, entropy, event_type)
-        print(f"🔍 Analyzing: {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
+        log_msg_processing(client_id, file_path, entropy, event_type)
+        print(f"Analyzing: {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
 
         if event_type == "LOCK_DOWN":
             status = "Locked"
@@ -120,7 +126,7 @@ def msg_callback(ch, method, properties, body):
         if entropy > ENTROPY_THRESHOLD:
             handle_malware(ch, client_id, file_path, entropy)
         else:
-            # ✅ Scenario B: Normal file modification
+            # Scenario B: Normal file modification
             # If previously 'Infected', and now a low entropy operation is received (possibly a recovered file),
             # the status will automatically revert to 'Safe'.
             status = "Safe"
@@ -128,11 +134,11 @@ def msg_callback(ch, method, properties, body):
                 client_id, status, entropy, f"Normal activity: {os.path.basename(file_path)}"
             )
     except Exception as e:
-        print(f"❌ Error processing message: {e}")
+        print(f"[WARNING] Error processing message: {e}")
 
 
 def main():
-    print("🛡️ Detection Service Starting...")
+    print("Detection Service Starting...")
 
     # 1. connect to rabbitmq
     connection = None
@@ -143,7 +149,7 @@ def main():
                 pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
             )
         except pika.exceptions.AMQPConnectionError:
-            print("⏳ Waiting for RabbitMQ...")
+            print("Waiting for RabbitMQ...")
             time.sleep(5)
 
     channel = connection.channel()
@@ -154,7 +160,7 @@ def main():
     # 3. send commands to the queue `commands`
     channel.queue_declare(queue="commands")
 
-    print("✅ Detection Engine Online. Waiting for entropy streams...")
+    print("[🍺] Detection Engine Online. Waiting for entropy streams...")
 
     # 4. Start analyzing messages
     channel.basic_consume(queue="file_events", on_message_callback=msg_callback, auto_ack=True)
