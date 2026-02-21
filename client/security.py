@@ -3,6 +3,17 @@ import stat
 from client import config
 from logger import Logger
 
+
+# write protection action
+def write_protection(trigger_source="Unknown", reason=""):
+    try:
+        # remove write permissions for all users (owner, group, others)
+        os.chmod(config.MONITOR_DIR, 0o555)
+        Logger.info(f"Write protection enabled by [{trigger_source}]. Reason: {reason}")
+    except Exception as e:
+        Logger.error(f"Failed to set write protection: {e}")
+
+
 # lockdown action
 def execute_lockdown(trigger_source="Unknown", reason=""):
     if getattr(config, 'IS_LOCKED_DOWN', False):
