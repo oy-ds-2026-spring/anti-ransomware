@@ -68,7 +68,7 @@ def read_op():
           properties:
             filename:
               type: string
-              example: "test.txt"
+              example: "contract_Flores_Inc.txt"
     responses:
       200:
         description: File content retrieved successfully
@@ -112,7 +112,7 @@ def write_op():
           properties:
             filename:
               type: string
-              example: "test.txt"
+              example: "contract_Flores_Inc.txt"
             content:
               type: string
               example: "Hello World"
@@ -198,7 +198,7 @@ def delete_op():
           properties:
             filename:
               type: string
-              example: "test.txt"
+              example: "contract_Stephenson-Mcdonald.txt"
     responses:
       200:
         description: File deleted successfully
