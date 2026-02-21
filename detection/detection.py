@@ -14,6 +14,7 @@ from logger import Logger
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")  # for DNS addressing
 LOG_FILE = "/logs/system_state.json"  # host machine `shared_logs/` -> docker `logs/`
 ENTROPY_THRESHOLD = 7.5
+FINANCE_NODES = ["finance1", "finance2", "finance3", "finance4"]
 
 # global state, real-time maintained in memory, written to log after update
 # for logging, for Dashboard
@@ -124,9 +125,12 @@ def handle_malware(ch, client_id, file_path, entropy):
     # send lock down command
     timestamp = time.strftime("%H:%M:%S")
     threat_id = f"RANSOM-{int(time.time())}"
-    trigger_client_lockdown(client_id, threat_id, reason="High entropy threshold breached")
-
-    log_command_lock_down(client_id, timestamp)
+    # trigger lockdown on all finance nodes
+    for node in FINANCE_NODES:
+        trigger_client_lockdown(node, threat_id, reason=f"High entropy threshold breached on {client_id}")
+        log_command_lock_down(node, timestamp)
+        if node != client_id:
+            log_client_status(node, "Locked", 0, "System Lockdown Initiated")
 
 
 # msg process

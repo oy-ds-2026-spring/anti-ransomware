@@ -13,13 +13,14 @@ def execute_lockdown(trigger_source="Unknown", reason=""):
     # Owner: S_IREAD (Read) + S_IXUSR (Execute to enter dir)
     # Group: S_IRGRP (Read only)
     # Others: S_IROTH (Read only)
-    LOCK_PERMS = stat.S_IREAD | stat.S_IXUSR | stat.S_IRGRP | stat.S_IROTH
+    # LOCK_PERMS = stat.S_IREAD | stat.S_IXUSR | stat.S_IRGRP | stat.S_IROTH
     try:
-        os.chmod(config.MONITOR_DIR, LOCK_PERMS)
+        # only owner can read and execute (enter) the directory, no permissions for anyone
+        os.chmod(config.MONITOR_DIR, 0o500)
+        
         config.IS_LOCKED_DOWN = True
-        return True, f"Directory locked successfully."
+        return True, "Directory physically locked via OS."
     except Exception as e:
-        Logger.error(f"Lockdown failed: {e}")
         return False, str(e)
     
 
@@ -32,8 +33,8 @@ def execute_unlock(trigger_source="Unknown", reason=""):
     Logger.unlock(f"   -> Reason: {reason}")
     
     try:
-        # restore to full permissions for everyone (777)
-        os.chmod(config.MONITOR_DIR, 0o777)
+        # restore permissions to allow full access again,owner: read/write/execute, group: read/write, others: read/write
+        os.chmod(config.MONITOR_DIR, 0o755)
         
         for root, dirs, files in os.walk(config.MONITOR_DIR):
             for d in dirs:

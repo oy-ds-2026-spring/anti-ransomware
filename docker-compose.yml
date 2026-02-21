@@ -74,7 +74,7 @@ services:
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance4:4321
     volumes:
       - .:/app
-      - ./simulation_data/finance1:/data  # Mount simulated data
+      - ./simulation_data/finance1:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
@@ -97,7 +97,7 @@ services:
       - PEERS=client-finance1:4321,client-finance3:4321,client-finance4:4321
     volumes:
       - .:/app
-      - ./simulation_data/finance2:/data  # Mount simulated data
+      - ./simulation_data/finance2:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
@@ -120,7 +120,7 @@ services:
       - PEERS=client-finance1:4321,client-finance2:4321,client-finance4:4321
     volumes:
       - .:/app
-      - ./simulation_data/finance3:/data  # Mount simulated data
+      - ./simulation_data/finance3:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
@@ -143,7 +143,7 @@ services:
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance1:4321
     volumes:
       - .:/app
-      - ./simulation_data/finance4:/data  # Mount simulated data
+      - ./simulation_data/finance4:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
@@ -194,3 +194,4 @@ services:
 networks:
   ransom_net:
     driver: bridge
+
