@@ -65,7 +65,7 @@ services:
     environment:
       - CLIENT_ID=finance1
       - MONITOR_DIR=/data
-      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
+      - RESTIC_REPOSITORY=rest:http://finance1:12345678@rest-server:8000/finance1/finance1
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
@@ -89,12 +89,11 @@ services:
     environment:
       - CLIENT_ID=finance2
       - MONITOR_DIR=/data
-      - RESTIC_REPOSITORY=rest:http://rnd:12345678@rest-server:8000/rnd/rnd
+      - RESTIC_REPOSITORY=rest:http://finance2:12345678@rest-server:8000/finance2/finance2
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
-      - ./simulation_data/rnd:/data      # Mount simulated data
-      - ./secrets/restic_repo_pass_rnd:/run/secrets/restic_repo_pass:ro
+      - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance2:/data  # Mount simulated data
       - ./shared_logs:/logs
     depends_on:
@@ -105,7 +104,7 @@ services:
     networks:
       - ransom_net
 
-  # client: finance3
+  # client: finance2
   client-finance3:
     build: .
     container_name: client-finance3
@@ -114,12 +113,17 @@ services:
     environment:
       - CLIENT_ID=finance3
       - MONITOR_DIR=/data
+      - RESTIC_REPOSITORY=rest:http://finance3:12345678@rest-server:8000/finance3/finance3
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
+      - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance3:/data  # Mount simulated data
       - ./shared_logs:/logs
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      rest-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -133,12 +137,17 @@ services:
     environment:
       - CLIENT_ID=finance4
       - MONITOR_DIR=/data
+      - RESTIC_REPOSITORY=rest:http://finance4:12345678@rest-server:8000/finance4/finance4
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
+      - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance4:/data  # Mount simulated data
       - ./shared_logs:/logs
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      rest-server:
         condition: service_healthy
     networks:
       - ransom_net

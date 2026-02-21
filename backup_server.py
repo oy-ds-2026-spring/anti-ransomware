@@ -1,10 +1,16 @@
+import json
+import uuid
+
 from flask import Flask, jsonify
 import threading
 import os
 import base64
 import time
 import requests
+import pika
 
+BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
+EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
 app = Flask(__name__)
 
 FINANCE_NODES = [
@@ -76,7 +82,48 @@ def snapshot_scheduler():
 
         print(f"[{time.strftime('%H:%M:%S')}] Snapshot Process Finished.")
 
+def snapshot_loop(channel):
+    channel.exchange_declare(exchange=EXCHANGE, exchange_type="fanout", durable=True)
+    while True:
+        msg = {
+            "type": "REGULAR_SNAPSHOT",
+            "snapshot_id": str(uuid.uuid4()),
+            "ts": int(time.time()),
+        }
+
+        channel.basic_publish(
+            exchange=EXCHANGE,
+            routing_key="",
+            body=json.dumps(msg).encode("utf-8"),
+            properties=pika.BasicProperties(
+                delivery_mode=2,
+                content_type="application/json",
+            ),
+        )
+
+        print(f"[backup] broadcast snapshot: {msg['snapshot_id']}")
+        time.sleep(60)
+
+def main():
+    print("Backup Service Starting...")
+
+    # 1. connect to rabbitmq
+    connection = None
+    while connection is None:
+        try:
+            credentials = pika.PlainCredentials("guest", "guest")
+            connection = pika.BlockingConnection(
+                pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
+            )
+        except pika.exceptions.AMQPConnectionError:
+            print("Waiting for RabbitMQ...")
+            time.sleep(5)
+
+    channel = connection.channel()
+
+    print("[INFO] Starting Backup Snapshot Scheduler...")
+    snapshot_loop(channel)
+
 
 if __name__ == "__main__":
-    threading.Thread(target=snapshot_scheduler, daemon=True).start()
-    app.run(host="0.0.0.0", port=8000)
+    main()
