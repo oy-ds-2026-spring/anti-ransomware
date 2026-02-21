@@ -833,6 +833,7 @@ if __name__ == "__main__":
     threading.Thread(target=lock_down_listener, daemon=True).start()
     threading.Thread(target=serve, daemon=True).start()    # listen sync command from other clients
     threading.Thread(target=sync_listener, daemon=True).start()
+    threading.Thread(target=snapshot_listener, daemon=True).start()
 
     # what to do when file operation monitored
     event_handler = EntropyMonitor()

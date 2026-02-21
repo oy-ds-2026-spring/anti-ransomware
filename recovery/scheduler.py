@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pika
 import requests
 
-from recovery.database import SnapshotDB
+from database import SnapshotDB
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
@@ -74,7 +74,7 @@ def commit_all_parallel(command_id: str, timeout: float = 2.0):
                 ok_all = False
     return ok_all, results
 
-def snapshot_loop(connection: pika.BlockingConnection, db: SnapshotDB):
+def snapshot_loop(connection: pika.BlockingConnection):
 
     channel = connection.channel()
 
@@ -82,6 +82,7 @@ def snapshot_loop(connection: pika.BlockingConnection, db: SnapshotDB):
 
     channel.exchange_declare(exchange=EXCHANGE, exchange_type="fanout", durable=True)
     while True:
+        time.sleep(10)
         command_id = str(uuid.uuid4())
 
         # Phase1: pause writes on all nodes

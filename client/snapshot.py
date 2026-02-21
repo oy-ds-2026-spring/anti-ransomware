@@ -14,7 +14,7 @@ RESTIC_REPOSITORY = os.getenv("RESTIC_REPOSITORY", "rest:http://finance:12345678
 RESTIC_PASSWORD_FILE = os.getenv("RESTIC_PASSWORD_FILE", "/run/secrets/restic_repo_pass")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 
-def publish_result(channel, client_id: str, restic_snapshot_id: str, ok: bool, command_id: str, error: Optional[str] = None):
+def publish_result(channel, client_id: str, restic_snapshot_id: str, ok: bool, command_id: Optional[str] = None, error: Optional[str] = None):
     msg = {
         "type": "SNAPSHOT_DONE" if ok else "SNAPSHOT_FAILED",
         "client_id": client_id,
@@ -72,9 +72,11 @@ def snapshot_listener():
 
         except Exception as e:
             print(f"[{CLIENT_ID}] snapshot failed: {e}")
-            publish_result(channel, CLIENT_ID, restic_snapshot_id="", ok=False, error=str(e))
-            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+            msg = json.loads(body)
+            publish_result(channel, CLIENT_ID, command_id=msg.get("command_id"), restic_snapshot_id="", ok=False, error=str(e))
+            ch.basic_ack(delivery_tag=method.delivery_tag)
 
+    channel.basic_qos(prefetch_count=1)
     channel.basic_consume(queue=queue_name, on_message_callback=on_msg, auto_ack=False)
     print(f"[{CLIENT_ID}] waiting for snapshot broadcasts...")
     channel.start_consuming()
@@ -109,21 +111,30 @@ def take_snapshot(
         "restic", "backup", source_path,
         "--host", hostname,
         "--tag", tag,
-        "--time", ts_utc,
+        "--json",
+        # "--time", ts_utc,
     ]
 
-    out = subprocess.check_output(cmd, env=env, stderr=subprocess.STDOUT, text=True)
+    p = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    out = (p.stdout or "") + ("\n" + p.stderr if p.stderr else "")
+
+    if p.returncode != 0:
+        raise RuntimeError(out.strip() or f"restic exit {p.returncode}")
 
     snapshot_id = None
-    for line in out.splitlines():
+    for line in (p.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
         try:
             obj = json.loads(line)
-        except Exception:
+        except json.JSONDecodeError:
             continue
-        if isinstance(obj, dict) and "snapshot_id" in obj:
-            snapshot_id = obj["snapshot_id"]
+
+        if isinstance(obj, dict) and obj.get("message_type") == "summary":
+            snapshot_id = obj.get("snapshot_id") or snapshot_id
 
     if not snapshot_id:
-        raise RuntimeError("restic output did not contain snapshot_id")
+        raise RuntimeError(f"restic output did not contain snapshot_id. Output:\n{p.stdout}")
 
     return snapshot_id

@@ -5,8 +5,8 @@ import time
 import pika
 from flask import Flask
 
-from recovery.database import SnapshotDB
-from recovery.scheduler import results_listener, snapshot_loop
+from database import SnapshotDB
+from scheduler import results_listener, snapshot_loop
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 app = Flask(__name__)
@@ -32,10 +32,14 @@ def main():
     print("[INFO] Backup Service Starting...")
 
     db = SnapshotDB("snapshots.db")
-
+    time.sleep(10)
     conn1 = start_connection("guest", "guest")
     # Start listening to snapshot results
-    t = threading.Thread(target=results_listener(connection=conn1), daemon=True)
+    t = threading.Thread(
+        target=results_listener,
+        args=(conn1, db),
+        daemon=True
+    )
     t.start()
 
     conn2 = start_connection("guest", "guest")
