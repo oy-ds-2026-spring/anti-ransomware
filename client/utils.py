@@ -3,7 +3,7 @@ import math
 import random
 from collections import Counter
 
-import config
+from client import config
 from logger import Logger
 
 
@@ -44,6 +44,29 @@ def local_delete(filename):
     filepath = os.path.join(config.MONITOR_DIR, filename)
     if os.path.exists(filepath):
         os.remove(filepath)
+        
+
+# vector lock: add 1 to the clock when local writes
+def increment_clock():
+    with config.CLOCK_LOCK:
+        config.VECTOR_CLOCK[config.CLIENT_ID] = config.VECTOR_CLOCK.get(config.CLIENT_ID, 0) + 1
+        return config.VECTOR_CLOCK.copy()
+    
+    
+# merge clock ( max(clocks) + 1 ) when receving sync message
+def merge_clock(incoming_clock):
+    with config.CLOCK_LOCK:
+        for node, time_val in incoming_clock.items():
+            config.VECTOR_CLOCK[node] = max(config.VECTOR_CLOCK.get(node, 0), time_val)
+        # merge indicate local receive and processes the event
+        # time should move forward
+        config.VECTOR_CLOCK[config.CLIENT_ID] = config.VECTOR_CLOCK.get(config.CLIENT_ID, 0) + 1
+        return config.VECTOR_CLOCK.copy()
+    
+    
+def get_clock():
+    with config.CLOCK_LOCK:
+        return config.VECTOR_CLOCK.copy()
 
 
 def is_header_modified(filepath, ext):

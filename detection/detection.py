@@ -5,8 +5,8 @@ import time
 import sys
 import grpc
 
-import lockdown_pb2
-import lockdown_pb2_grpc
+from common import lockdown_pb2
+from common import lockdown_pb2_grpc
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import Logger
@@ -14,6 +14,7 @@ from logger import Logger
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")  # for DNS addressing
 LOG_FILE = "/logs/system_state.json"  # host machine `shared_logs/` -> docker `logs/`
 ENTROPY_THRESHOLD = 7.5
+FINANCE_NODES = ["finance1", "finance2", "finance3", "finance4"]
 
 # global state, real-time maintained in memory, written to log after update
 # for logging, for Dashboard
@@ -124,9 +125,12 @@ def handle_malware(ch, client_id, file_path, entropy):
     # send lock down command
     timestamp = time.strftime("%H:%M:%S")
     threat_id = f"RANSOM-{int(time.time())}"
-    trigger_client_lockdown(client_id, threat_id, reason="High entropy threshold breached")
-
-    log_command_lock_down(client_id, timestamp)
+    # trigger lockdown on all finance nodes
+    for node in FINANCE_NODES:
+        trigger_client_lockdown(node, threat_id, reason=f"High entropy threshold breached on {client_id}")
+        log_command_lock_down(node, timestamp)
+        if node != client_id:
+            log_client_status(node, "Locked", 0, "System Lockdown Initiated")
 
 
 # msg process
@@ -139,10 +143,16 @@ def msg_callback(ch, method, properties, body):
         file_path = msg.get("file_path", "?")
         entropy = float(msg.get("entropy", 0))
         event_type = msg.get("event_type", "UNKNOWN")
+        
+        # test vector clock
+        v_clock = msg.get("v_clock", {})
 
         # log current msg
         log_msg_processing(client_id, file_path, entropy, event_type)
         Logger.analyze(f" {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
+        
+        # test vector clock
+        print(f"[{client_id}] | {event_type} | {os.path.basename(file_path)} | Entropy: {entropy:.2f} | Clock: {v_clock}")
 
         if event_type == "LOCK_DOWN":
             status = "Locked"
