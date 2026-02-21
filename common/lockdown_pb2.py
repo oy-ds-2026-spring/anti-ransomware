@@ -13,17 +13,17 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0elockdown.proto\x12\x08security\"^\n\x0fLockdownRequest\x12\x11\n\tthreat_id\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\x12\x15\n\rtargeted_node\x18\x04 \x01(\t\";\n\x10LockdownResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x16\n\x0estatus_message\x18\x02 \x01(\t2]\n\x0fLockdownService\x12J\n\x0fTriggerLockdown\x12\x19.security.LockdownRequest\x1a\x1a.security.LockdownResponse\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0elockdown.proto\x12\x06\x63ommon\"^\n\x0fLockdownRequest\x12\x11\n\tthreat_id\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\x12\x15\n\rtargeted_node\x18\x04 \x01(\t\";\n\x10LockdownResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x16\n\x0estatus_message\x18\x02 \x01(\t2Y\n\x0fLockdownService\x12\x46\n\x0fTriggerLockdown\x12\x17.common.LockdownRequest\x1a\x18.common.LockdownResponse\"\x00\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'lockdown_pb2', _globals)
 if _descriptor._USE_C_DESCRIPTORS == False:
   DESCRIPTOR._options = None
-  _globals['_LOCKDOWNREQUEST']._serialized_start=28
-  _globals['_LOCKDOWNREQUEST']._serialized_end=122
-  _globals['_LOCKDOWNRESPONSE']._serialized_start=124
-  _globals['_LOCKDOWNRESPONSE']._serialized_end=183
-  _globals['_LOCKDOWNSERVICE']._serialized_start=185
-  _globals['_LOCKDOWNSERVICE']._serialized_end=278
+  _globals['_LOCKDOWNREQUEST']._serialized_start=26
+  _globals['_LOCKDOWNREQUEST']._serialized_end=120
+  _globals['_LOCKDOWNRESPONSE']._serialized_start=122
+  _globals['_LOCKDOWNRESPONSE']._serialized_end=181
+  _globals['_LOCKDOWNSERVICE']._serialized_start=183
+  _globals['_LOCKDOWNSERVICE']._serialized_end=272
 # @@protoc_insertion_point(module_scope)

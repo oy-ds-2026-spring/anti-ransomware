@@ -3,7 +3,7 @@ import math
 import random
 from collections import Counter
 
-import config
+from client import config
 from logger import Logger
 
 

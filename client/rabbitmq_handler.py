@@ -1,10 +1,10 @@
 import pika
-import config
 import time
 import json
 import uuid
 
-import utils
+from client import config
+from client import utils
 from logger import Logger
 
 
@@ -42,11 +42,11 @@ def _on_sync_message(ch, method, properties, body):
         Logger.warning(f"Sync processing failed: {e}")
 
 
-# mq connectionection
+# mq connection
 def _get_channel():
     credentials = pika.PlainCredentials("guest", "guest")
-    connection = pika.Blockingconnectionection(
-        pika.connectionectionParameters(host=config.BROKER_HOST, credentials=credentials)
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(host=config.BROKER_HOST, credentials=credentials)
     )
     return connection, connection.channel()
 

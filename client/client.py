@@ -4,11 +4,11 @@ import threading
 from watchdog.observers import Observer
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import config
-import routes
-import grpc_server
-import rabbitmq_handler
-from monitor import EntropyMonitor
+from client import config
+from client import routes
+from client import grpc_server
+from client import rabbitmq_handler
+from client.monitor import EntropyMonitor
 from logger import Logger
 
 

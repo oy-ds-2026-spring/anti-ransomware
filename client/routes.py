@@ -1,4 +1,5 @@
 import os
+import stat
 import time
 import threading
 import base64
@@ -6,10 +7,10 @@ import csv
 import requests
 from flask import Flask, jsonify, request
 
-import config
-import utils
-from models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
-import rabbitmq_handler
+from client import config
+from client import utils
+from client.models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
+from client import rabbitmq_handler
 from logger import Logger
 
 app = Flask(__name__)

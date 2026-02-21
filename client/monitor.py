@@ -3,9 +3,9 @@ import os
 from collections import deque
 from watchdog.events import FileSystemEventHandler
 
-import config
-import utils
-import rabbitmq_handler
+from client import config
+from client import utils
+from client import rabbitmq_handler
 from logger import Logger
 
 
