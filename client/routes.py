@@ -5,6 +5,7 @@ import base64
 import csv
 import requests
 from flask import Flask, jsonify, request
+from flasgger import Swagger
 
 import config
 import utils
@@ -13,6 +14,7 @@ import rabbitmq_handler
 from logger import Logger
 
 app = Flask(__name__)
+Swagger(app)
 
 
 # log locally and notify recovery service
@@ -62,12 +64,37 @@ def _run_encryption():
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
 def trigger_attack():
+    """
+    Trigger a simulated ransomware attack on this node.
+    ---
+    tags:
+      - Simulation
+    responses:
+      200:
+        description: Attack triggered successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+            target:
+              type: string
+    """
     threading.Thread(target=_run_encryption).start()
     return jsonify({"status": "infected", "target": config.CLIENT_ID})
 
 
 @app.route("/unlock", methods=["GET", "POST"])
 def unlock_system():
+    """
+    Unlock the system after a lockdown.
+    ---
+    tags:
+      - Simulation
+    responses:
+      200:
+        description: System unlocked successfully
+    """
     config.IS_LOCKED_DOWN = False
     Logger.unlock("System unlocked")
     return jsonify({"status": "unlocked"})
@@ -79,6 +106,15 @@ def unlock_system():
 # Snapshot Coordination Endpoints
 @app.route("/snapshot/prepare", methods=["POST"])
 def snapshot_prepare():
+    """
+    Prepare for a snapshot by pausing write operations.
+    ---
+    tags:
+      - Snapshot
+    responses:
+      200:
+        description: Ready for snapshot
+    """
     # pause new write operations
     config.WRITE_PERMISSION.clear()
     return jsonify({"status": "ready"})
@@ -86,6 +122,15 @@ def snapshot_prepare():
 
 @app.route("/snapshot/commit", methods=["POST"])
 def snapshot_commit():
+    """
+    Commit the snapshot and resume write operations.
+    ---
+    tags:
+      - Snapshot
+    responses:
+      200:
+        description: Write operations resumed
+    """
     # resume write operations
     config.WRITE_PERMISSION.set()
     return jsonify({"status": "resumed"})
@@ -93,6 +138,15 @@ def snapshot_commit():
 
 @app.route("/snapshot/data", methods=["GET"])
 def snapshot_data():
+    """
+    Retrieve all files in the monitor directory encoded in base64.
+    ---
+    tags:
+      - Snapshot
+    responses:
+      200:
+        description: Snapshot data retrieved
+    """
     # return all files in MONITOR_DIR encoded in base64
     backup_data = {}
     for root, _, files in os.walk(config.MONITOR_DIR):
@@ -115,6 +169,32 @@ def snapshot_data():
 # return: file content
 @app.route("/read", methods=["POST"])
 def read_file():
+    """
+    Read a file's content.
+    ---
+    tags:
+      - File Operations
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - filename
+          properties:
+            filename:
+              type: string
+    responses:
+      200:
+        description: File content retrieved
+      400:
+        description: Invalid request
+      404:
+        description: File not found
+      500:
+        description: Internal server error
+    """
     try:
         req = ReadReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -137,6 +217,32 @@ def read_file():
 # return: success status
 @app.route("/create", methods=["POST"])
 def create_file():
+    """
+    Create a new file.
+    ---
+    tags:
+      - File Operations
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - filename
+          properties:
+            filename:
+              type: string
+            content:
+              type: string
+    responses:
+      200:
+        description: File created successfully
+      400:
+        description: Invalid request
+      500:
+        description: Internal server error
+    """
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     try:
         req = CreateReq(**request.get_json())
@@ -162,6 +268,33 @@ def create_file():
 # return: file content after modification
 @app.route("/write", methods=["POST"])
 def write_file():
+    """
+    Append content to an existing file.
+    ---
+    tags:
+      - File Operations
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - filename
+            - content
+          properties:
+            filename:
+              type: string
+            content:
+              type: string
+    responses:
+      200:
+        description: File written successfully
+      400:
+        description: Invalid request
+      500:
+        description: Internal server error
+    """
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     try:
         req = WriteReq(**request.get_json())
@@ -187,6 +320,32 @@ def write_file():
 # return: success status
 @app.route("/delete", methods=["POST"])
 def delete_file():
+    """
+    Delete a file.
+    ---
+    tags:
+      - File Operations
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - filename
+          properties:
+            filename:
+              type: string
+    responses:
+      200:
+        description: File deleted successfully
+      400:
+        description: Invalid request
+      404:
+        description: File not found
+      500:
+        description: Internal server error
+    """
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     try:
         req = DeleteReq(**request.get_json())
@@ -208,3 +367,66 @@ def delete_file():
         return jsonify(Response(status="success", message="File deleted").to_dict())
     except Exception as e:
         return jsonify(Response(status="error", message=str(e)).to_dict()), 500
+
+
+# Simple file browser to view /data structure and content
+@app.route("/browse", defaults={"req_path": ""})
+@app.route("/browse/<path:req_path>")
+def browse_fs(req_path):
+    """
+    Browse the file system of the monitored directory.
+    ---
+    tags:
+      - File Browser
+    parameters:
+      - in: path
+        name: req_path
+        type: string
+        required: false
+        description: The path to browse (relative to monitor dir)
+    responses:
+      200:
+        description: HTML content of the directory listing or file content
+      403:
+        description: Forbidden
+      404:
+        description: Not Found
+      500:
+        description: Internal server error
+    """
+    base_dir = os.path.abspath(config.MONITOR_DIR)
+    abs_path = os.path.abspath(os.path.join(base_dir, req_path))
+
+    # Security check
+    if not abs_path.startswith(base_dir):
+        return "Forbidden", 403
+
+    if not os.path.exists(abs_path):
+        return "Not Found", 404
+
+    if os.path.isfile(abs_path):
+        try:
+            with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            return f"<h3>File: {req_path}</h3><pre>{content}</pre>"
+        except Exception as e:
+            return f"Error reading file: {e}", 500
+
+    # Directory listing
+    try:
+        files = sorted(os.listdir(abs_path))
+    except OSError as e:
+        return f"Error listing directory: {e}", 500
+
+    html = [f"<h2>Directory: /{req_path}</h2><ul>"]
+
+    if req_path:
+        parent = os.path.dirname(req_path)
+        html.append(f'<li><a href="/browse/{parent}">.. (Parent)</a></li>')
+
+    for f in files:
+        link_path = os.path.join(req_path, f).replace(os.sep, "/")
+        html.append(f'<li><a href="/browse/{link_path}">{f}</a></li>')
+
+    html.append("</ul>")
+    return "".join(html)

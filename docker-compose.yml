@@ -68,6 +68,8 @@ services:
     expose:
       - "50051"  # gRPC Lockdown port
       - "4321"
+    ports:
+      - "5001:5000" # file browser & swagger
     environment:
       - CLIENT_ID=finance1
       - MONITOR_DIR=/data
@@ -170,7 +172,7 @@ services:
     working_dir: /app/dashboard
     command: python dashboard.py
     ports:
-      - "8501:8501" 
+      - "8501:8501"  # frontend dashboard
     volumes:
       - .:/app
       - ./shared_logs:/logs  
@@ -183,7 +185,7 @@ services:
     container_name: finance-gateway
     command: python ./gateway/gateway.py
     ports:
-      - "9000:9000"
+      - "9000:9000" # gateway swagger
     environment:
       - STORAGE_NODES=client-finance1,client-finance2,client-finance3,client-finance4
     volumes:
