@@ -9,8 +9,16 @@ import json
 import threading
 import pika
 import random
+import stat
+import csv
+import uuid
+import base64
 from flask import Flask, jsonify
 from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from collections import Counter
+from collections import deque
+from snapshot import snapshot_listener
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from client import config
@@ -19,21 +27,7 @@ from client import grpc_server
 from client import rabbitmq_handler
 from client.monitor import EntropyMonitor
 from logger import Logger
-from watchdog.events import FileSystemEventHandler
-from collections import Counter
-from collections import deque
-import stat
-import time
-import math
-import json
-import csv
-import uuid
-import base64
-import threading
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-from collections import Counter
-from snapshot import snapshot_listener
+
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
