@@ -7,7 +7,7 @@ compile protobuf files:
 ```cmd
 python -m grpc_tools.protoc \
   -I./proto \
-  --python_out=. \
-  --grpc_python_out=. \
+  --python_out=./common \
+  --grpc_python_out=./common \
   ./proto/lockdown.proto
 ```

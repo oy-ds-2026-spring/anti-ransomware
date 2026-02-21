@@ -1,9 +1,10 @@
 import os
+from os import path
 import stat
 import grpc
 from concurrent import futures
-import lockdown_pb2
-import lockdown_pb2_grpc
+from common import lockdown_pb2
+from common import lockdown_pb2_grpc
 import config
 
 
@@ -29,15 +30,17 @@ class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
             print(f"[{config.CLIENT_ID}]: {error_msg}")
             return lockdown_pb2.LockdownResponse(success=False, status_message=error_msg)
 
-    def lock_directory_readonly(self, path):
-        READ_ONLY = stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH
-        DIR_READ_ONLY = READ_ONLY | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-        os.chmod(path, DIR_READ_ONLY)
-        for root, dirs, files in os.walk(path):
-            for d in dirs:
-                os.chmod(os.path.join(root, d), DIR_READ_ONLY)
-            for f in files:
-                os.chmod(os.path.join(root, f), READ_ONLY)
+    def lock_directory_readonly(path):
+        # Owner: S_IREAD (Read) + S_IXUSR (Execute to enter dir)
+        # Group: S_IRGRP (Read only)
+        # Others: S_IROTH (Read only)
+        LOCK_PERMS = stat.S_IREAD | stat.S_IXUSR | stat.S_IRGRP | stat.S_IROTH
+        
+        try:
+            os.chmod(path, LOCK_PERMS)
+            print(f"[{config.CLIENT_ID}] Folder-level lock applied instantly to {path} (Owner: rx, Group/Others: r)")
+        except Exception as e:
+            print(f"[{config.CLIENT_ID}] Failed to apply folder-level lock: {e}")
 
 
 def serve():
