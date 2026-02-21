@@ -1,135 +1,19 @@
-import json
-import uuid
-
-from flask import Flask, jsonify
-import threading
 import os
-import base64
+import threading
 import time
-import requests
+
 import pika
+from flask import Flask
+from scheduler import results_listener, snapshot_loop
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
-EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
-RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 app = Flask(__name__)
-
-FINANCE_NODES = [
-    "client-finance1",
-    "client-finance2",
-    "client-finance3",
-    "client-finance4",
-]
-
 
 @app.route("/")
 def index():
     return "Backup Server Coordinator"
 
-
-def snapshot_scheduler():
-    print("[SNAPSHOT] scheduler started (10 min)")
-    while True:
-        time.sleep(60)  # 10 minutes
-        print(f"[{time.strftime('%H:%M:%S')}] [SNAPSHOT] starting")
-
-        # Phase1: pause writes on all nodes
-        all_ready = True
-        for node in FINANCE_NODES:
-            try:
-                resp = requests.post(f"http://{node}:5000/snapshot/prepare", timeout=2)
-                if resp.status_code != 200:
-                    all_ready = False
-                    print(f"[WARNING] Node {node} not ready.")
-            except Exception as e:
-                all_ready = False
-                print(f"[WARNING] Node {node} unreachable: {e}")
-
-        if all_ready:
-            print("[🍺] All nodes paused. Saving snapshot...")
-
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            snapshot_dir = os.path.join("/data", f"snapshot_{timestamp}")
-            snapshot_dir = os.path.join("/data", timestamp)
-            os.makedirs(snapshot_dir, exist_ok=True)
-
-            for node in FINANCE_NODES:
-                try:
-                    resp = requests.get(f"http://{node}:5000/snapshot/data", timeout=30)
-                    if resp.status_code == 200:
-                        files = resp.json()
-                        node_dir = os.path.join(snapshot_dir, node[7:])
-                        os.makedirs(node_dir, exist_ok=True)
-
-                        for rel_path, content_b64 in files.items():
-                            file_path = os.path.join(node_dir, rel_path)
-                            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                            with open(file_path, "wb") as f:
-                                f.write(base64.b64decode(content_b64))
-                        print(f"[SNAPSHOT] Saved {len(files)} files from {node}")
-                except Exception as e:
-                    print(f"[ERROR] Snapshot failed for {node}: {e}")
-
-            print("[🍺] Snapshot saved.")
-        else:
-            print("[WARNING] Snapshot aborted due to node failure.")
-
-        # Phase 2: Commit (Resume writes on all nodes)
-        for node in FINANCE_NODES:
-            try:
-                requests.post(f"http://{node}:5000/snapshot/commit", timeout=2)
-            except Exception as e:
-                print(f"[WARNING] Failed to resume {node}: {e}")
-
-        print(f"[{time.strftime('%H:%M:%S')}] Snapshot Process Finished.")
-
-def snapshot_loop(channel):
-    channel.exchange_declare(exchange=EXCHANGE, exchange_type="fanout", durable=True)
-    while True:
-        msg = {
-            "type": "REGULAR_SNAPSHOT",
-            "command_id": str(uuid.uuid4()),
-            "ts": int(time.time()),
-        }
-
-        channel.basic_publish(
-            exchange=EXCHANGE,
-            routing_key="",
-            body=json.dumps(msg).encode("utf-8"),
-            properties=pika.BasicProperties(
-                delivery_mode=2,
-                content_type="application/json",
-            ),
-        )
-
-        print(f"[backup] broadcast snapshot: {msg['command_id']}")
-        time.sleep(60)
-
-def results_listener():
-    conn = pika.BlockingConnection(
-        pika.ConnectionParameters(host=BROKER_HOST, credentials=pika.PlainCredentials("guest", "guest"))
-    )
-    ch = conn.channel()
-
-    ch.queue_declare(queue=RESULT_QUEUE, durable=True)
-
-    def on_result(ch, method, properties, body):
-        msg = json.loads(body)
-        # TODO: 可以在这里按 command_id 汇总 4 个节点的完成情况
-        print(f"[backup] got result: {msg}")
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-
-    ch.basic_consume(queue=RESULT_QUEUE, on_message_callback=on_result, auto_ack=False)
-    print("[backup] listening snapshot_results...")
-    ch.start_consuming()
-
-def main():
-    print("Backup Service Starting...")
-
-    t = threading.Thread(target=results_listener, daemon=True)
-    t.start()
-
-    # connect to rabbitmq
+def start_connection(username, password):
     connection = None
     while connection is None:
         try:
@@ -137,14 +21,23 @@ def main():
             connection = pika.BlockingConnection(
                 pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
             )
-        except pika.exceptions.AMQPConnectionError:
-            print("Waiting for RabbitMQ...")
+        except Exception as e:
+            print(f"[ERROR] Failed to connect to RabbitMQ: {e}")
             time.sleep(5)
+    return connection
 
-    channel = connection.channel()
+def main():
+    print("[INFO] Backup Service Starting...")
 
+    conn1 = start_connection("guest", "guest")
+    # Start listening to snapshot results
+    t = threading.Thread(target=results_listener(connection=conn1), daemon=True)
+    t.start()
+
+    conn2 = start_connection("guest", "guest")
+    # start snapshot schedule
     print("[INFO] Starting Backup Snapshot Scheduler...")
-    snapshot_loop(channel)
+    snapshot_loop(connection=conn2)
 
 
 if __name__ == "__main__":
