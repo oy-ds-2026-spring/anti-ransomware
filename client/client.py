@@ -11,9 +11,6 @@ from monitor import EntropyMonitor
 if __name__ == "__main__":
     print(f"[INFO] Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
 
-    # start fishing
-    utils.fishing(config.MONITOR_DIR)
-
     # start listening to mq and rpc calls ################################
 
     # listen command from detection engine

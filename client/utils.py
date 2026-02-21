@@ -44,20 +44,6 @@ def local_delete(filename):
         os.remove(filepath)
 
 
-# generate some baits file, if these files are modified meaning the file is being attack
-def fishing(monitor_dir):
-    # spread baits
-    print(f"[Info] Bait files deployed at: {monitor_dir}")
-    for bait_name in config.BAITS:
-        filepath = os.path.join(monitor_dir, bait_name)
-        content = b"ADMIN_ROOT_PASSWORD=Secret2026\nDB_IP=192.168.1.1\n"
-        try:
-            with open(filepath, "wb") as f:
-                f.write(content)
-        except Exception as e:
-            print(f"[Error] Deploy bait file failed, {bait_name}: {e}")
-
-
 def is_header_modified(filepath, ext):
     # header of some file types are fixed
     # check header of specific file type
