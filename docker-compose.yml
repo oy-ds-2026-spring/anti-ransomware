@@ -18,11 +18,37 @@ services:
       timeout: 5s
       retries: 5
 
+  # Zookeeper (for Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - ransom_net
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - ransom_net
+
   # detection service
   detection-service:
     build: .
     container_name: detection-service
-    command: python ./detection/detection.py  # pick a script to run
+    command: python -m detection.detection
     volumes:
       - .:/app  # mount current source code; changes take effect after restart
       - ./shared_logs:/logs
@@ -67,7 +93,7 @@ services:
         echo "[client] checking restic repo...";
         restic snapshots >/dev/null 2>&1 || restic init;
         echo "[client] restic repo ok";
-        exec python ./client/client.py
+        exec python -m client.client
       '
     expose:
       - "50051"  # gRPC Lockdown port
@@ -81,7 +107,7 @@ services:
     volumes:
       - .:/app
       - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
-      - ./simulation_data/finance1:/data  # Mount simulated data
+      - ./simulation_data/finance1:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
@@ -102,7 +128,7 @@ services:
         echo "[client] checking restic repo...";
         restic snapshots >/dev/null 2>&1 || restic init;
         echo "[client] restic repo ok";
-        exec python ./client/client.py
+        exec python -m client.client
       '
     expose:
       - "50051"  # gRPC Lockdown port
@@ -116,7 +142,7 @@ services:
     volumes:
       - .:/app
       - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
-      - ./simulation_data/finance2:/data  # Mount simulated data
+      - ./simulation_data/finance2:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
@@ -137,7 +163,7 @@ services:
         echo "[client] checking restic repo...";
         restic snapshots >/dev/null 2>&1 || restic init;
         echo "[client] restic repo ok";
-        exec python ./client/client.py
+        exec python -m client.client
       '
     expose:
       - "50051"  # gRPC Lockdown port
@@ -151,7 +177,7 @@ services:
     volumes:
       - .:/app
       - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
-      - ./simulation_data/finance3:/data  # Mount simulated data
+      - ./simulation_data/finance3:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:
@@ -172,7 +198,7 @@ services:
         echo "[client] checking restic repo...";
         restic snapshots >/dev/null 2>&1 || restic init;
         echo "[client] restic repo ok";
-        exec python ./client/client.py
+        exec python -m client.client
       '
     expose:
       - "50051"  # gRPC Lockdown port
@@ -186,7 +212,7 @@ services:
     volumes:
       - .:/app
       - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
-      - ./simulation_data/finance4:/data  # Mount simulated data
+      - ./simulation_data/finance4:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
     depends_on:
       rabbitmq:

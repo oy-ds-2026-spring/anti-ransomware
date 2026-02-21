@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package security;
+package common;
 
 service LockdownService {
   // Detection calls this on Backup and Clients

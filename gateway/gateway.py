@@ -68,7 +68,7 @@ def read_op():
           properties:
             filename:
               type: string
-              example: "test.txt"
+              example: "contract_Flores_Inc.txt"
     responses:
       200:
         description: File content retrieved successfully
@@ -112,7 +112,7 @@ def write_op():
           properties:
             filename:
               type: string
-              example: "test.txt"
+              example: "contract_Flores_Inc.txt"
             content:
               type: string
               example: "Hello World"
@@ -198,7 +198,7 @@ def delete_op():
           properties:
             filename:
               type: string
-              example: "test.txt"
+              example: "contract_Stephenson-Mcdonald.txt"
     responses:
       200:
         description: File deleted successfully
@@ -214,6 +214,27 @@ def delete_op():
 
     try:
         resp = requests.post("http://client-finance1:5000/delete", json=asdict(req), timeout=10)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify(Response(error=str(e)).to_dict()), 500
+
+
+# route to finance1 node(primary)
+@app.route("/finance/attack", methods=["GET"])
+def attack_op():
+    """
+    Trigger an attack on the primary finance node (finance1).
+    ---
+    tags:
+      - File Operations
+    responses:
+      200:
+        description: Attack triggered successfully
+      500:
+        description: Internal server error
+    """
+    try:
+        resp = requests.get("http://client-finance1:5000/attack", timeout=5)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500

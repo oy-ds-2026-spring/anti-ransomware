@@ -248,7 +248,7 @@ topologyChart.on("mouseup", function () {
   });
 
   // Save positions to server
-  fetch("/api/positions", {
+  fetch("/dashboard/positions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(nodePositions),
@@ -267,10 +267,8 @@ function updateGraphics() {
   const nodes = currentOption && currentOption.series && currentOption.series[0] ? currentOption.series[0].data : [];
 
   nodes.forEach((node) => {
-    const match = node.name && node.name.match(/^F(\d+)$/);
-    if (match) {
-      const id = match[1];
-
+    // Only for Gateway
+    if (node.name === "Gateway") {
       let x = node.x;
       let y = node.y;
       if (nodePositions[node.name]) {
@@ -278,8 +276,8 @@ function updateGraphics() {
         y = nodePositions[node.name].y;
       }
 
-      // Attack Button: x - 35, y + 40
-      const attackPos = topologyChart.convertToPixel({ seriesIndex: 0 }, [x - 35, y + 40]);
+      // Attack Button: x, y + 40
+      const attackPos = topologyChart.convertToPixel({ seriesIndex: 0 }, [x, y + 70]);
       if (attackPos) {
         graphics.push({
           type: "group",
@@ -288,51 +286,22 @@ function updateGraphics() {
             {
               type: "rect",
               shape: { x: -30, y: -12.5, width: 60, height: 25 },
-              style: { fill: COLORS.INFECTED, opacity: 0.6 },
-              styleEmphasis: { fill: "#ff1a1a" },
+              style: { fill: COLORS.INFECTED },
             },
             {
               type: "text",
               style: {
                 text: "Attack",
-                fill: "#000000",
-                font: "bold 11px sans-serif",
+                fill: "#730000",
+                font: "bold 12px sans-serif",
                 textAlign: "center",
                 textVerticalAlign: "middle",
               },
               position: [0, 0],
             },
           ],
-          onclick: () => triggerAction(`finance${id}`, "attack"),
-        });
-      }
-
-      // Normal Button: x + 35, y + 40
-      const normalPos = topologyChart.convertToPixel({ seriesIndex: 0 }, [x + 35, y + 40]);
-      if (normalPos) {
-        graphics.push({
-          type: "group",
-          position: normalPos,
-          children: [
-            {
-              type: "rect",
-              shape: { x: -30, y: -12.5, width: 60, height: 25 },
-              style: { fill: COLORS.SAFE, opacity: 0.6 },
-              styleEmphasis: { fill: "#00cc00" },
-            },
-            {
-              type: "text",
-              style: {
-                text: "Normal",
-                fill: "#000",
-                font: "bold 11px sans-serif",
-                textAlign: "center",
-                textVerticalAlign: "middle",
-              },
-              position: [0, 0],
-            },
-          ],
-          onclick: () => triggerAction(`finance${id}`, "normal"),
+          // Trigger attack via gateway
+          onclick: () => triggerAttack(),
         });
       }
     }
@@ -341,14 +310,14 @@ function updateGraphics() {
   topologyChart.setOption({ graphic: graphics });
 }
 
-// button attack/normal
-async function triggerAction(target, action) {
+// button attack
+async function triggerAttack() {
   try {
-    // POST request
-    await fetch(`/api/action/${target}/${action}`, { method: "POST" });
-    console.log(`Command [${action}] sent to [${target}]`);
+    // GET request
+    await fetch(`/dashboard/attack`, { method: "GET" });
+    console.log(`Command [attack] sent to [GATEWAY]`);
   } catch (error) {
-    console.error("Action failed:", error);
+    console.error("Attack failed:", error);
   }
 }
 
@@ -364,7 +333,7 @@ async function fetchState() {
   if (isDragging) return;
 
   try {
-    const response = await fetch("/api/state");
+    const response = await fetch("/dashboard/state");
     const state = await response.json();
 
     // Double check: if dragging started during fetch, abort update to avoid resetting positions
@@ -481,7 +450,7 @@ async function fetchState() {
 
 async function init() {
   try {
-    const res = await fetch("/api/positions");
+    const res = await fetch("/dashboard/positions");
     if (res.ok) {
       const data = await res.json();
       if (data) nodePositions = data;
