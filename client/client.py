@@ -29,24 +29,6 @@ from client.monitor import EntropyMonitor
 from logger import Logger
 
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from client import config
-from client import routes
-from client import grpc_server
-from client import rabbitmq_handler
-from client.monitor import EntropyMonitor
-from logger import Logger
-
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from client import config
-from client import routes
-from client import grpc_server
-from client import rabbitmq_handler
-from client.monitor import EntropyMonitor
-from logger import Logger
-
-
 if __name__ == "__main__":
     Logger.info(f"Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
 
