@@ -1,4 +1,7 @@
 import os
+import subprocess
+from datetime import datetime, timezone
+from typing import Optional
 import time
 import math
 import json
@@ -36,6 +39,9 @@ from collections import Counter
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
+EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
+RESTIC_REPOSITORY = os.getenv("RESTIC_REPOSITORY", "rest:http://finance2:12345678@rest-server:8000/finance2/finance2")
+RESTIC_PASSWORD_FILE = os.getenv("RESTIC_PASSWORD_FILE", "/run/secrets/restic_repo_pass")
 
 IS_LOCKED_DOWN = False
 
@@ -469,6 +475,85 @@ def broadcast_sync(operation, filename, content=""):
     print(f"[🍺 SYNC_OK] Received {ack_count} ACKs")
     connection.close()
 
+def snapshot_listener():
+    connection = None
+    while connection is None:
+        try:
+            credentials = pika.PlainCredentials("guest", "guest")
+            connection = pika.BlockingConnection(
+                pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
+            )
+        except Exception as e:
+            print(f"ERROR: Failed to connect to RabbitMQ: {e}")
+            time.sleep(5)
+
+    channel = connection.channel()
+
+    channel.exchange_declare(exchange=EXCHANGE, exchange_type="fanout", durable=True)
+
+    queue_name = f"regular_snapshot.{CLIENT_ID}"
+    channel.queue_declare(queue=queue_name, durable=True)
+    channel.queue_bind(queue=queue_name, exchange=EXCHANGE)
+
+    def on_msg(ch, method, properties, body):
+        try:
+            print(f"[{CLIENT_ID}] received command: {body.decode('utf-8')}")
+            msg = json.loads(body)
+
+            if msg.get("type") == "REGULAR_SNAPSHOT":
+                out = take_snapshot(
+                    source_path=MONITOR_DIR,
+                    repo_path=RESTIC_REPOSITORY,
+                    hostname=CLIENT_ID,
+                    password_file=RESTIC_PASSWORD_FILE,
+                )
+                print(out)
+
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+        except Exception as e:
+            print(f"[{CLIENT_ID}] snapshot failed: {e}")
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+
+    channel.basic_consume(queue=queue_name, on_message_callback=on_msg, auto_ack=False)
+    print(f"[{CLIENT_ID}] waiting for snapshot broadcasts...")
+    channel.start_consuming()
+
+def take_snapshot(
+    source_path: str,
+    repo_path: str,
+    hostname: str,
+    password_file: Optional[str] = None,
+    password: Optional[str] = None,
+    tag: str = "regular",
+) -> str:
+    """
+    Take a local restic snapshot of `source_path` into local repo `repo_path`.
+    Returns the restic command stdout (includes snapshot id lines).
+    """
+    if hostname is None:
+        hostname = os.uname().nodename
+
+    env = os.environ.copy()
+    env["RESTIC_REPOSITORY"] = repo_path
+    if password is not None:
+        env["RESTIC_PASSWORD"] = password
+    elif password_file is not None:
+        env["RESTIC_PASSWORD_FILE"] = password_file
+    else:
+        raise ValueError("ERROR: Failed to take snapshot due to RESTIC_PASSWORD missing.")
+
+    ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    cmd = [
+        "restic", "backup", source_path,
+        "--host", hostname,
+        "--tag", tag,
+        "--time", ts_utc,
+    ]
+
+    out = subprocess.check_output(cmd, env=env, stderr=subprocess.STDOUT, text=True)
+    return out
 
 app = Flask(__name__)
 
