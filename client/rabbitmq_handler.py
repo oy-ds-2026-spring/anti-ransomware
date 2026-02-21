@@ -3,7 +3,9 @@ import config
 import time
 import json
 import uuid
+
 import utils
+from logger import Logger
 
 
 # send msg to RabbitMQ
@@ -27,12 +29,10 @@ def send_msg(file_path, entropy, event_type):
         }
 
         channel.basic_publish(exchange="", routing_key="file_events", body=json.dumps(payload))
-        print(
-            f"[SENT] {file_path} | Entropy: {entropy:.2f} | Event: {event_type}"
-        )  # Add event type to output
+        Logger.sent(f"{file_path} | Entropy: {entropy:.2f} | Event: {event_type}")
         connection.close()
     except Exception as e:
-        print(f"[ERROR] RabbitMQ Error: {e}")
+        Logger.warning(f"RabbitMQ Error: {e}")
 
 
 # listen to RabbitMQ
@@ -50,7 +50,7 @@ def lock_down_listener():
                 msg = json.loads(body)
 
                 config.IS_LOCKED_DOWN = True
-                print(f"[LOCK_DOWN] Command received! Isolating {config.CLIENT_ID}...")
+                Logger.lock_down(f"Command received! Isolating {config.CLIENT_ID}...")
                 # report ok
                 send_msg("SYSTEM_ISOLATED", 0, "LOCK_DOWN")
 
@@ -106,16 +106,16 @@ def sync_listener():
                             properties=reply_props,
                             body=json.dumps({"status": "ACK", "sender": config.CLIENT_ID}),
                         )
-                        print(f"[SYNC_ACK] Sent ACK for {op}, {filename}")
+                        Logger.done(f"ACK sent for {op}, {filename}")
                 except Exception as e:
-                    print(f"[ERROR] Sync processing failed: {e}")
+                    Logger.warning(f"Sync processing failed: {e}")
 
             # starts listening
             channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
-            print("[SYNC] Listener started")
+            Logger.sync("Listener started")
             channel.start_consuming()
         except Exception as e:
-            print(f"[ERROR] Sync listener connection lost: {e}")
+            Logger.warning(f"Sync listener connection lost: {e}")
             time.sleep(5)
 
 
@@ -150,7 +150,7 @@ def broadcast_sync(operation, filename, content=""):
         ),
         body=json.dumps(payload),
     )
-    print(f"[SYNC] request for {operation}, {filename}, {content}")
+    Logger.sync(f"request for {operation}, {filename}, {content}")
 
     # starts to count ACK number
     ack_count = 0
@@ -168,8 +168,8 @@ def broadcast_sync(operation, filename, content=""):
     while ack_count < 3:
         connection.process_data_events(time_limit=1)
         if time.time() - start_time > 10:
-            print(f"[WARNING] Sync timeout. Received {ack_count}/3 ACKs.")
+            Logger.warning(f"Sync timeout. Received {ack_count}/3 ACKs.")
             break
 
-    print(f"[🍺 SYNC_OK] Received {ack_count} ACKs")
+    Logger.done(f"SYNC_OK Received {ack_count} ACKs")
     connection.close()

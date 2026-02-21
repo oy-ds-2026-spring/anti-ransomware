@@ -10,6 +10,7 @@ import config
 import utils
 from models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
 import rabbitmq_handler
+from logger import Logger
 
 app = Flask(__name__)
 
@@ -36,11 +37,11 @@ def _log_and_archive(filename, operation, appended=""):
         # notify recovery service
         requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
     except Exception as e:
-        print(f"[WARNING] Logging/Archive failed: {e}")
+        Logger.warning(f"Logging/Archive failed: {e}")
 
 
 def _run_encryption():
-    print(f"[RANSOMWARE] Attack started on {config.CLIENT_ID}...")
+    Logger.ransomware(f"Attack started on {config.CLIENT_ID}...")
     for root, _, files in os.walk(config.MONITOR_DIR):
         for file in files:
             if file.endswith(".locked"):
@@ -52,10 +53,10 @@ def _run_encryption():
                 with open(filepath, "wb") as f:
                     f.write(os.urandom(len(data)))
                 os.rename(filepath, filepath + ".locked")
-                print(f"[㊙️ ENCRYPTED]: {file}")
+                Logger.encrypted(f"{file}")
                 time.sleep(0.5)
             except Exception as e:
-                print(f"Failed to encrypt {file}: {e}")
+                Logger.warning(f"Failed to encrypt {file}: {e}")
 
 
 # simulate being attacked
@@ -68,7 +69,7 @@ def trigger_attack():
 @app.route("/unlock", methods=["GET", "POST"])
 def unlock_system():
     config.IS_LOCKED_DOWN = False
-    print("[RECOVERY] System unlocked")
+    Logger.unlock("System unlocked")
     return jsonify({"status": "unlocked"})
 
 
@@ -103,7 +104,7 @@ def snapshot_data():
                     content = base64.b64encode(f.read()).decode("utf-8")
                 backup_data[rel_path] = content
             except Exception as e:
-                print(f"[WARNING] Snapshot read failed for {file}: {e}")
+                Logger.warning(f"Snapshot read failed for {file}: {e}")
     return jsonify(backup_data)
 
 

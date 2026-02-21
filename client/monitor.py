@@ -2,9 +2,11 @@ import time
 import os
 from collections import deque
 from watchdog.events import FileSystemEventHandler
+
 import config
 import utils
 import rabbitmq_handler
+from logger import Logger
 
 
 class EntropyMonitor(FileSystemEventHandler):
@@ -48,14 +50,14 @@ class EntropyMonitor(FileSystemEventHandler):
             return
 
         if basename in config.BAITS:
-            print(f"[Warning] Confirmed Attack: Baits File [{basename}] is modified.")
+            Logger.warning(f"Confirmed Attack: Baits File [{basename}] is modified.")
             config.IS_LOCKED_DOWN = True
             rabbitmq_handler.send_msg(filename, 8.0, "BAIT_TRIGGERED")
             return
 
         self.modification_timestamps.append(time.time())
         if self.check_modify_velocity():
-            print(f"[Warning] Possible Attack: File modify freq exceeding 10 times/sec.")
+            Logger.warning(f"Possible Attack: File modify freq exceeding 10 times/sec.")
             rabbitmq_handler.send_msg(filename, 8.0, "VELOCITY_ATTACK")
             return
 
@@ -64,7 +66,7 @@ class EntropyMonitor(FileSystemEventHandler):
             is_suspicious_size, ratio = self.check_size_change(filename, current_size)
             self.file_metadata[filename] = {"size": current_size}
             if is_suspicious_size:
-                print(f"[Warning] Size Anomaly: {basename} changed by {ratio*100:.1f}%")
+                Logger.warning(f"Size Anomaly: {basename} changed by {ratio*100:.1f}%")
                 rabbitmq_handler.send_msg(filename, 0, "SIZE_ANOMALY")
         except OSError:
             pass
@@ -72,8 +74,8 @@ class EntropyMonitor(FileSystemEventHandler):
         ext = os.path.splitext(filename)[1].lower()
         if ext in config.PROPER_HEADS:
             if utils.is_header_modified(filename, ext):
-                print(
-                    f"[Warning] Confirmed Attack: Detected {ext} file header is modified: {filename}"
+                Logger.warning(
+                    f"Confirmed Attack: Detected {ext} file header is modified: {filename}"
                 )
                 config.IS_LOCKED_DOWN = True
                 rabbitmq_handler.send_msg(filename, 8.0, "MODIFY")

@@ -1,15 +1,19 @@
+import sys
+import os
 import threading
 from watchdog.observers import Observer
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 import routes
-import utils
 import grpc_server
 import rabbitmq_handler
 from monitor import EntropyMonitor
+from logger import Logger
 
 
 if __name__ == "__main__":
-    print(f"[INFO] Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
+    Logger.info(f"Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
 
     # start listening to mq and rpc calls ################################
 

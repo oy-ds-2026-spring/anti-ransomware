@@ -2,7 +2,9 @@ import os
 import math
 import random
 from collections import Counter
+
 import config
+from logger import Logger
 
 
 def calculate_entropy(data):
@@ -93,5 +95,5 @@ def read_sampled_data(filepath):
 
             return bytes(sampled_data)
     except Exception as e:
-        print(f"[Error] Failed to read {filepath} | Error: {e}")
+        Logger.warning(f"Failed to read {filepath} | Error: {e}")
         return b""
