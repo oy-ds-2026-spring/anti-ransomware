@@ -60,6 +60,7 @@ def _on_sync_message(ch, method, properties, body):
 
     # not listen to self
     if msg.get("sender") == config.CLIENT_ID:
+        ch.basic_ack(delivery_tag=method.delivery_tag)
         return
 
     # wait for snapshot if needed
@@ -91,6 +92,8 @@ def _on_sync_message(ch, method, properties, body):
             utils.local_write(filename, content)
         elif op == "DELETE":
             utils.local_delete(filename)
+            
+        ch.basic_ack(delivery_tag=method.delivery_tag)
 
         # after operation reply SYNC_ACK
         if properties.reply_to:
@@ -193,7 +196,7 @@ def sync_listener():
             flush_offline_queue(channel)
 
             channel.basic_consume(
-                queue=queue_name, on_message_callback=_on_sync_message, auto_ack=True
+                queue=queue_name, on_message_callback=_on_sync_message, auto_ack=False
             )
             Logger.sync("Listener started / Reconnected")
             channel.start_consuming()
