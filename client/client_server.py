@@ -18,7 +18,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from collections import Counter
 from collections import deque
-from client.snapshot import snapshot_listener
+
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from client import config
@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     # start gRPC server
     threading.Thread(target=grpc_server.serve, daemon=True).start()
-    threading.Thread(target=snapshot_listener, daemon=True).start()
+
 
     # watchdog: what to do when file operation observed ###################
     event_handler = EntropyMonitor()

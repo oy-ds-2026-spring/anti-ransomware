@@ -15,6 +15,7 @@ from client.models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
 from client import rabbitmq_handler
 from client import security
 from client.security import execute_unlock
+from client.snapshot import take_snapshot, start_snapshot
 from logger import Logger
 
 app = Flask(__name__)
@@ -165,6 +166,14 @@ def snapshot_prepare():
     config.WRITE_PERMISSION.clear()
     return jsonify({"status": "ready"})
 
+@app.route("/snapshot/start", methods=["POST"])
+def snapshot_start():
+    restic_snap_id = start_snapshot()
+
+    if restic_snap_id is None:
+        return jsonify({"status": "error", "message": "Snapshot failed", "snapshot_id": restic_snap_id}), 500
+
+    return jsonify({"status": "success", "snapshot_id": restic_snap_id}), 200
 
 @app.route("/snapshot/commit", methods=["POST"])
 def snapshot_commit():
@@ -177,9 +186,10 @@ def snapshot_commit():
       200:
         description: Write operations resumed
     """
+
     # resume write operations
     config.WRITE_PERMISSION.set()
-    return jsonify({"status": "resumed"})
+    return jsonify({"status": "resumed"}), 200
 
 
 @app.route("/snapshot/data", methods=["GET"])
@@ -479,3 +489,5 @@ def browse_fs(req_path):
 
     html.append("</ul>")
     return "".join(html)
+
+

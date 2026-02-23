@@ -9,77 +9,23 @@ import pika
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "Client-Node")
-EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
 RESTIC_REPOSITORY = os.getenv("RESTIC_REPOSITORY", "rest:http://finance:12345678@rest-server:8000/finance1/finance1")
 RESTIC_PASSWORD_FILE = os.getenv("RESTIC_PASSWORD_FILE", "/run/secrets/restic_repo_pass")
-RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 
-def publish_result(channel, client_id: str, restic_snapshot_id: str, ok: bool, command_id: Optional[str] = None, error: Optional[str] = None):
-    msg = {
-        "type": "SNAPSHOT_DONE" if ok else "SNAPSHOT_FAILED",
-        "client_id": client_id,
-        "restic_snapshot_id": restic_snapshot_id,
-        "command_id": command_id,
-        "ts": int(time.time()),
-        "error": error,
-    }
-    channel.basic_publish(
-        exchange="",
-        routing_key=RESULT_QUEUE,
-        body=json.dumps(msg).encode("utf-8"),
-        properties=pika.BasicProperties(
-            delivery_mode=2,  # 持久化（要求队列 durable）
-            content_type="application/json",
-        ),
-    )
+def start_snapshot():
+    try:
+        snap_id = take_snapshot(
+            source_path=MONITOR_DIR,
+            repo_path=RESTIC_REPOSITORY,
+            hostname=CLIENT_ID,
+            password_file=RESTIC_PASSWORD_FILE,
+        )
 
-def snapshot_listener():
-    connection = None
-    while connection is None:
-        try:
-            credentials = pika.PlainCredentials("guest", "guest")
-            connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
-            )
-        except Exception as e:
-            print(f"ERROR: Failed to connect to RabbitMQ: {e}")
-            time.sleep(5)
+        return snap_id
+    except Exception as e:
+        print("ERROR:", e)
+        return None
 
-    channel = connection.channel()
-
-    channel.exchange_declare(exchange=EXCHANGE, exchange_type="fanout", durable=True)
-
-    queue_name = f"regular_snapshot.{CLIENT_ID}"
-    channel.queue_declare(queue=queue_name, durable=True)
-    channel.queue_bind(queue=queue_name, exchange=EXCHANGE)
-
-    channel.queue_declare(queue=RESULT_QUEUE, durable=True)
-
-    def on_msg(ch, method, properties, body):
-        try:
-            print(f"[{CLIENT_ID}] received command: {body.decode('utf-8')}")
-            msg = json.loads(body)
-
-            if msg.get("type") == "REGULAR_SNAPSHOT":
-                snap_id = take_snapshot(
-                    source_path=MONITOR_DIR,
-                    repo_path=RESTIC_REPOSITORY,
-                    hostname=CLIENT_ID,
-                    password_file=RESTIC_PASSWORD_FILE,
-                )
-                publish_result(channel, CLIENT_ID, snap_id, command_id=msg.get("command_id"), ok=True)
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
-        except Exception as e:
-            print(f"[{CLIENT_ID}] snapshot failed: {e}")
-            msg = json.loads(body)
-            publish_result(channel, CLIENT_ID, command_id=msg.get("command_id"), restic_snapshot_id="", ok=False, error=str(e))
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
-    channel.basic_qos(prefetch_count=1)
-    channel.basic_consume(queue=queue_name, on_message_callback=on_msg, auto_ack=False)
-    print(f"[{CLIENT_ID}] waiting for snapshot broadcasts...")
-    channel.start_consuming()
 
 def take_snapshot(
     source_path: str,
