@@ -13,7 +13,7 @@ from logger import Logger
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")  # for DNS addressing
 LOG_FILE = "/logs/system_state.json"  # host machine `shared_logs/` -> docker `logs/`
-ENTROPY_THRESHOLD = 7.5
+# ENTROPY_THRESHOLD = 7.5
 FINANCE_NODES = ["finance1", "finance2", "finance3", "finance4"]
 
 # global state, real-time maintained in memory, written to log after update
@@ -37,9 +37,9 @@ WINDOW_SIZE = 10
 WRITE_WINDOW_SEC = 10
 
 HIGH_ENTROPY_BASE = 7.4   # adaptive baseline
-LOCKDOWN_SCORE = 8
-COMPROMISED_SCORE = 5
-SUSPICIOUS_SCORE = 3
+LOCKDOWN_SCORE = 6
+COMPROMISED_SCORE = 4
+SUSPICIOUS_SCORE = 2
 
 # save `current_state` to shared_log
 def save_state():
