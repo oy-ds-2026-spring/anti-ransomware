@@ -30,6 +30,16 @@ current_state = {
     "issued_commands": [],
 }
 
+# --- Detection Profiles ---
+client_profiles = {}
+
+WINDOW_SIZE = 10
+WRITE_WINDOW_SEC = 10
+
+HIGH_ENTROPY_BASE = 7.4   # adaptive baseline
+LOCKDOWN_SCORE = 8
+COMPROMISED_SCORE = 5
+SUSPICIOUS_SCORE = 3
 
 # save `current_state` to shared_log
 def save_state():
@@ -92,6 +102,83 @@ def log_msg_processing(client_id, file_path, entropy, event_type):
         current_state["processing_logs"].pop(0)
     save_state()
 
+# get client profile
+def get_profile(client_id):
+    return client_profiles.setdefault(client_id, {
+        "entropy_window": [],
+        "events": [],
+        "write_burst": 0,
+        "score": 0,
+        "state": "Safe",
+        "last_update": time.time()
+    })
+
+# adaptive thresholding logic
+def adaptive_entropy_threshold(profile):
+    window = profile["entropy_window"]
+
+    if len(window) < 3:
+        return HIGH_ENTROPY_BASE
+
+    avg = sum(window) / len(window)
+    return max(7.2, avg + 0.35)
+
+def update_entropy_window(profile, entropy):
+    w = profile["entropy_window"]
+    w.append(entropy)
+
+    if len(w) > WINDOW_SIZE:
+        w.pop(0)
+
+# event rate logic
+def update_event_rate(profile):
+    now = time.time()
+
+    profile["events"].append(now)
+    profile["events"] = [
+        t for t in profile["events"]
+        if now - t < WRITE_WINDOW_SEC
+    ]
+
+    return len(profile["events"])
+
+def update_write_burst(profile, event_type):
+    if event_type == "WRITE":
+        profile["write_burst"] += 1
+    else:
+        profile["write_burst"] = max(0, profile["write_burst"] - 1)
+
+    return profile["write_burst"]
+
+HIGH_ENTROPY_SAFE_EXT = (
+    ".zip", ".rar", ".7z", ".gz", ".jpg",
+    ".png", ".mp4", ".pdf"
+)
+
+def is_safe_high_entropy(file_path):
+    return file_path.lower().endswith(HIGH_ENTROPY_SAFE_EXT)
+
+def calculate_score(profile, entropy, file_path, event_type):
+
+    score = 0
+
+    threshold = adaptive_entropy_threshold(profile)
+    # entropy spike
+    if entropy > threshold:
+        score += 3
+    # rapid file modifications
+    rate = update_event_rate(profile)
+    if rate > 6:
+        score += 2
+    # write burst behaviour
+    burst = update_write_burst(profile, event_type)
+    if burst > 4:
+        score += 2
+    # ignore safe compressed files
+    if is_safe_high_entropy(file_path):
+        score -= 1
+
+    return score
 
 # grpc trigger logic
 def trigger_client_lockdown(client_id, threat_id, reason):
@@ -132,6 +219,34 @@ def handle_malware(ch, client_id, file_path, entropy):
         if node != client_id:
             log_client_status(node, "Locked", 0, "System Lockdown Initiated")
 
+# trigger lockdown if score breaches certain level
+def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
+
+    profile["score"] += calculate_score(
+        profile, entropy, file_path, event_type
+    )
+
+    # natural decay
+    profile["score"] = max(0, profile["score"] - 1)
+
+    score = profile["score"]
+
+    if score >= LOCKDOWN_SCORE and profile["state"] != "Locked":
+        profile["state"] = "Locked"
+        handle_malware(ch, client_id, file_path, entropy)
+    elif score >= COMPROMISED_SCORE:
+        profile["state"] = "Compromised"
+        log_client_status(client_id, "Infected", entropy,
+                          "High ransomware confidence")
+    elif score >= SUSPICIOUS_SCORE:
+        profile["state"] = "Suspicious"
+        log_client_status(client_id, "Suspicious", entropy,
+                          "Abnormal behaviour detected")
+    else:
+        profile["state"] = "Safe"
+        log_client_status(client_id, "Safe", entropy,
+                          f"Normal activity: {os.path.basename(file_path)}")
+
 
 # msg process
 def msg_callback(ch, method, properties, body):
@@ -162,16 +277,28 @@ def msg_callback(ch, method, properties, body):
             return
 
         # check entropy
-        if entropy > ENTROPY_THRESHOLD:
-            handle_malware(ch, client_id, file_path, entropy)
-        else:
-            # Scenario B: Normal file modification
-            # If previously 'Infected', and now a low entropy operation is received (possibly a recovered file),
-            # the status will automatically revert to 'Safe'.
-            status = "Safe"
-            log_client_status(
-                client_id, status, entropy, f"Normal activity: {os.path.basename(file_path)}"
-            )
+        # if entropy > ENTROPY_THRESHOLD:
+        #     handle_malware(ch, client_id, file_path, entropy)
+        # else:
+        #     # Scenario B: Normal file modification
+        #     # If previously 'Infected', and now a low entropy operation is received (possibly a recovered file),
+        #     # the status will automatically revert to 'Safe'.
+        #     status = "Safe"
+        #     log_client_status(
+        #         client_id, status, entropy, f"Normal activity: {os.path.basename(file_path)}"
+        #     )
+        profile = get_profile(client_id)
+
+        update_entropy_window(profile, entropy)
+
+        update_escalation(
+            client_id,
+            profile,
+            entropy,
+            file_path,
+            event_type,
+            ch
+        )
     except Exception as e:
         Logger.warning(f"Error processing message: {e}")
 

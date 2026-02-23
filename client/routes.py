@@ -2,6 +2,7 @@ import os
 import stat
 import time
 import multiprocessing
+import threading
 import base64
 import csv
 import requests
@@ -46,35 +47,25 @@ def _log_and_archive(filename, operation, appended=""):
 
 
 def _run_encryption(monitor_dir, client_id):
-    """generate some random bytes and cover the original file"""
-    try:
-        # drop privileges to non-root user
-        os.setgid(1000)
-        os.setuid(1000)
-    except Exception as e:
-        Logger.error(f"Failed to drop privileges: {e}")
-        return  # Exit, no root attack possible
-
-    Logger.ransomware(f"Attack started on {client_id} as non-root user")
-
-    if not os.access(monitor_dir, os.W_OK):
-        Logger.error("OS PHYSICAL BLOCK: Attacker lost write access. Process terminating.")
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        Logger.warning(f"Attack blocked: {client_id} is locked down!")
         return
 
     for root, _, files in os.walk(monitor_dir):
         for file in files:
-            if file.endswith(".locked"):
-                continue
             filepath = os.path.join(root, file)
 
-            try:
-                # If 'Owner Write' (S_IWUSR) is missing, we simulate the Linux Kernel block.
-                dir_mode = os.stat(root).st_mode
-                if not (dir_mode & stat.S_IWUSR):
-                    raise PermissionError(
-                        13, f"Permission denied (Blocked by OS Lock): '{filepath}'"
-                    )
+            # Check shared memory flag before touching the file
+            if getattr(config, "IS_LOCKED_DOWN", False):
+                Logger.lock_down("Lockdown activated mid-encryption. Stopping attack.")
+                return
 
+            try:
+                if not os.access(root, os.W_OK):
+                    Logger.lock_down(f"OS physical block: cannot write to {root}")
+                    return 
+
+                # Fake encryption
                 with open(filepath, "rb") as f:
                     data = f.read()
 
@@ -87,11 +78,8 @@ def _run_encryption(monitor_dir, client_id):
                 time.sleep(0.5)
 
             except Exception as e:
-                Logger.error(f"ATTACKER BLOCKED: {e}")
-                if isinstance(e, PermissionError):
-                    Logger.info("Attacker process crushed against the physical lock.")
-                    return  # Exit the attack process immediately
-
+                Logger.error(f"Attack blocked by OS or lockdown: {e}")
+                return 
 
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
@@ -112,15 +100,15 @@ def trigger_attack():
             target:
               type: string
     """
-    # t = threading.Thread(
-    #     target=_run_encryption,
-    #     args=(config.MONITOR_DIR, config.CLIENT_ID),
-    #     daemon=True
-    # )
-    # t.start()
+    t = threading.Thread(
+        target=_run_encryption,
+        args=(config.MONITOR_DIR, config.CLIENT_ID),
+        daemon=True
+    )
+    t.start()
 
-    p = multiprocessing.Process(target=_run_encryption, args=(config.MONITOR_DIR, config.CLIENT_ID))
-    p.start()
+    # p = multiprocessing.Process(target=_run_encryption, args=(config.MONITOR_DIR, config.CLIENT_ID))
+    # p.start()
 
     return jsonify({"status": "infected", "target": config.CLIENT_ID})
 
