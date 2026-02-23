@@ -11,13 +11,9 @@ from logger import Logger
 def _on_sync_message(ch, method, properties, body):
     msg = json.loads(body)
 
-    # not listen to self
-    if msg.get("sender") == config.CLIENT_ID:
-        return
-
-    # wait for snapshot if needed
+    # wait for snapshot to end if needed (step out of lockdown state)
     config.WRITE_PERMISSION.wait()
-    
+
     # get and merge the clock
     incoming_clock = msg.get("v_clock", {})
     utils.merge_clock(incoming_clock)
@@ -32,11 +28,11 @@ def _on_sync_message(ch, method, properties, body):
         elif op == "DELETE":
             utils.local_delete(filename)
 
-        # after operation reply SYNC_ACK
-        if properties.reply_to:
+        # after operation reply SYNC_ACK, `finance_sync_ack`
+        if msg.get("sender"):
             ch.basic_publish(
-                exchange="",
-                routing_key=properties.reply_to,
+                exchange="finance_sync_ack",
+                routing_key=msg.get("sender"),
                 properties=pika.BasicProperties(correlation_id=properties.correlation_id),
                 body=json.dumps({"status": "ACK", "sender": config.CLIENT_ID}),
             )
@@ -68,7 +64,7 @@ def send_msg(file_path, entropy, event_type):
             "entropy": entropy,
             "event_type": event_type,
             "timestamp": time.time(),
-            "v_clock": utils.get_clock()
+            "v_clock": utils.get_clock(),
         }
 
         channel.basic_publish(exchange="", routing_key="file_events", body=json.dumps(payload))
@@ -106,6 +102,7 @@ def sync_listener():
             # connect
             _, channel = _get_channel()
             channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
+            channel.exchange_declare(exchange="finance_sync_ack", exchange_type="direct")
             queue_name = channel.queue_declare(queue="", exclusive=True).method.queue
             channel.queue_bind(exchange="finance_sync", queue=queue_name)
 
@@ -123,27 +120,32 @@ def broadcast_sync(operation, filename, content="", v_clock=None):
     # connect
     connection, channel = _get_channel()
     channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
+    channel.exchange_declare(exchange="finance_sync_ack", exchange_type="direct")
     callback_queue = channel.queue_declare(queue="", exclusive=True).method.queue
+    # bind queue to receive ACKs specifically for this client
+    channel.queue_bind(
+        exchange="finance_sync_ack", queue=callback_queue, routing_key=config.CLIENT_ID
+    )
 
-    # publish command
+    # publish command to `finance_sync`
     corr_id = str(uuid.uuid4())
     payload = {
         "sender": config.CLIENT_ID,
         "operation": operation,
         "filename": filename,
         "content": content,
-        "v_clock": v_clock or utils.get_clock()
+        "v_clock": v_clock or utils.get_clock(),
     }
 
     channel.basic_publish(
         exchange="finance_sync",
         routing_key="",
-        properties=pika.BasicProperties(reply_to=callback_queue, correlation_id=corr_id),
+        properties=pika.BasicProperties(correlation_id=corr_id),
         body=json.dumps(payload),
     )
     Logger.sync(f"request for {operation}, {filename}, {content}")
 
-    # starts to count ACK number
+    # starts to count ACK number, `finance_sync_ack`
     ack_count = 0
 
     def on_ack(ch, method, props, body):
