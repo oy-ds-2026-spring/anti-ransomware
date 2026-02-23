@@ -1,6 +1,8 @@
 import sys
 import os
 import threading
+import subprocess
+import time
 from watchdog.observers import Observer
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,6 +17,18 @@ from logger import Logger
 
 if __name__ == "__main__":
     Logger.info(f"Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
+
+    # Initialize Kerberos
+    keytab_file = f"/keytabs/{config.CLIENT_ID}.keytab"
+    for _ in range(15):
+        if os.path.exists(keytab_file):
+            try:
+                subprocess.run(["kinit", "-kt", keytab_file, config.CLIENT_ID], check=True)
+                Logger.info("Kerberos ticket initialized.")
+                break
+            except Exception as e:
+                Logger.warning(f"Kerberos init failed: {e}")
+        time.sleep(2)
 
     # start listening to mq and rpc calls ################################
 

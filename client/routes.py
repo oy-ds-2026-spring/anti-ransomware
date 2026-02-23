@@ -8,6 +8,11 @@ import requests
 from flask import Flask, jsonify, request
 from flasgger import Swagger
 
+try:
+    from flask_gssapi import GSSAPI
+except ImportError:
+    GSSAPI = None
+
 from client import config
 from client import utils
 from client.models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
@@ -17,6 +22,19 @@ from logger import Logger
 
 app = Flask(__name__)
 Swagger(app)
+
+# Configure Kerberos/GSSAPI
+if GSSAPI:
+    app.config["GSSAPI_SPNEGO"] = True
+    gss_auth = GSSAPI(app)
+else:
+    gss_auth = None
+
+
+def auth_required(f):
+    if gss_auth:
+        return gss_auth.login_required(f)
+    return f
 
 
 def _log_and_archive(filename, operation, appended=""):
@@ -95,6 +113,7 @@ def _run_encryption(monitor_dir, client_id):
 
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
+@auth_required
 def trigger_attack():
     """
     Trigger a simulated ransomware attack on this node.
@@ -126,6 +145,7 @@ def trigger_attack():
 
 
 @app.route("/unlock", methods=["GET", "POST"])
+@auth_required
 def unlock_system():
     """
     Unlock the system after a lockdown.
@@ -151,6 +171,7 @@ def unlock_system():
 
 # Snapshot Coordination Endpoints
 @app.route("/snapshot/prepare", methods=["POST"])
+@auth_required
 def snapshot_prepare():
     """
     Prepare for a snapshot by pausing write operations.
@@ -167,6 +188,7 @@ def snapshot_prepare():
 
 
 @app.route("/snapshot/commit", methods=["POST"])
+@auth_required
 def snapshot_commit():
     """
     Commit the snapshot and resume write operations.
@@ -183,6 +205,7 @@ def snapshot_commit():
 
 
 @app.route("/snapshot/data", methods=["GET"])
+@auth_required
 def snapshot_data():
     """
     Retrieve all files in the monitor directory encoded in base64.
@@ -214,6 +237,7 @@ def snapshot_data():
 # param: filename
 # return: file content
 @app.route("/read", methods=["POST"])
+@auth_required
 def read_file():
     """
     Read a file's content.
@@ -262,6 +286,7 @@ def read_file():
 # param: filename, content (optional)
 # return: success status
 @app.route("/create", methods=["POST"])
+@auth_required
 def create_file():
     """
     Create a new file.
@@ -313,6 +338,7 @@ def create_file():
 # param: filename and content to be appended(append only)
 # return: file content after modification
 @app.route("/write", methods=["POST"])
+@auth_required
 def write_file():
     """
     Append content to an existing file.
@@ -365,6 +391,7 @@ def write_file():
 # param: filename
 # return: success status
 @app.route("/delete", methods=["POST"])
+@auth_required
 def delete_file():
     """
     Delete a file.
@@ -419,6 +446,7 @@ def delete_file():
 # Simple file browser to view /data structure and content
 @app.route("/browse", defaults={"req_path": ""})
 @app.route("/browse/<path:req_path>")
+@auth_required
 def browse_fs(req_path):
     """
     Browse the file system of the monitored directory.
