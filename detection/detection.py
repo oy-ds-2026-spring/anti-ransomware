@@ -149,10 +149,7 @@ def update_write_burst(profile, event_type):
 
     return profile["write_burst"]
 
-HIGH_ENTROPY_SAFE_EXT = (
-    ".zip", ".rar", ".7z", ".gz", ".jpg",
-    ".png", ".mp4", ".pdf"
-)
+HIGH_ENTROPY_SAFE_EXT = {".jpeg", ".gif", ".bmp", ".mp4", ".mp3", ".avi", ".mov", ".7z", ".tar"}
 
 def is_safe_high_entropy(file_path):
     return file_path.lower().endswith(HIGH_ENTROPY_SAFE_EXT)
