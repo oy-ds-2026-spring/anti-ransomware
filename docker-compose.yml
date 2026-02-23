@@ -93,7 +93,7 @@ services:
         echo "[client] checking restic repo...";
         restic snapshots >/dev/null 2>&1 || restic init;
         echo "[client] restic repo ok";
-        exec python -m client.client
+        exec python -m client.client_server
       '
     expose:
       - "50051"  # gRPC Lockdown port
@@ -130,7 +130,7 @@ services:
         echo "[client] checking restic repo...";
         restic snapshots >/dev/null 2>&1 || restic init;
         echo "[client] restic repo ok";
-        exec python -m client.client
+        exec python -m client.client_server
       '
     expose:
       - "50051"  # gRPC Lockdown port
@@ -165,7 +165,7 @@ services:
         echo "[client] checking restic repo...";
         restic snapshots >/dev/null 2>&1 || restic init;
         echo "[client] restic repo ok";
-        exec python -m client.client
+        exec python -m client.client_server
       '
     expose:
       - "50051"  # gRPC Lockdown port
@@ -200,7 +200,7 @@ services:
         echo "[client] checking restic repo...";
         restic snapshots >/dev/null 2>&1 || restic init;
         echo "[client] restic repo ok";
-        exec python -m client.client
+        exec python -m client.client_server
       '
     expose:
       - "50051"  # gRPC Lockdown port
