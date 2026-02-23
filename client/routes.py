@@ -19,9 +19,8 @@ app = Flask(__name__)
 Swagger(app)
 
 
+# log locally and notify recovery service
 def _log_and_archive(filename, operation, appended=""):
-    """log locally and notify recovery service"""
-
     try:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -46,7 +45,6 @@ def _log_and_archive(filename, operation, appended=""):
 
 
 def _run_encryption(monitor_dir, client_id):
-    """generate some random bytes and cover the original file"""
     try:
         # drop privileges to non-root user
         os.setgid(1000)
@@ -295,12 +293,13 @@ def create_file():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename is required").to_dict()), 400
 
+    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
         utils.local_create(req.filename, req.content)
 
-        # broadcast to others via RabbitMQ
         current_clock = utils.increment_clock()
-        rabbitmq_handler.broadcast_sync("CREATE", req.filename, req.content, current_clock)
+        # broadcast to others via RabbitMQ
+        rabbitmq_handler.broadcast_sync("CREATE", req.filename, req.content)
 
         _log_and_archive(req.filename, "CREATE", req.content)
 
@@ -347,11 +346,12 @@ def write_file():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename and content are required").to_dict()), 400
 
+    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
         new_content = utils.local_write(req.filename, req.content)
 
-        # broadcast to others via RabbitMQ # with clock
         current_clock = utils.increment_clock()
+        # broadcast to others via RabbitMQ # with clock
         rabbitmq_handler.broadcast_sync("WRITE", req.filename, req.content, current_clock)
 
         _log_and_archive(req.filename, "MODIFY", req.content)
@@ -405,8 +405,8 @@ def delete_file():
 
         utils.local_delete(req.filename)
 
-        # broadcast to others via RabbitMQ # with clock
         current_clock = utils.increment_clock()
+        # broadcast to others via RabbitMQ # with clock
         rabbitmq_handler.broadcast_sync("DELETE", req.filename, current_clock)
 
         _log_and_archive(req.filename, "DELETE", "")
@@ -446,10 +446,10 @@ def browse_fs(req_path):
 
     # Security check
     if not abs_path.startswith(base_dir):
-        return f"[{config.CLIENT_ID}] Forbidden", 403
+        return "Forbidden", 403
 
     if not os.path.exists(abs_path):
-        return f"[{config.CLIENT_ID}] Not Found", 404
+        return "Not Found", 404
 
     if os.path.isfile(abs_path):
         try:
@@ -457,13 +457,13 @@ def browse_fs(req_path):
                 content = f.read()
             return f"<h3>File: {req_path}</h3><pre>{content}</pre>"
         except Exception as e:
-            return f"[{config.CLIENT_ID}] Error reading file: {e}", 500
+            return f"Error reading file: {e}", 500
 
     # Directory listing
     try:
         files = sorted(os.listdir(abs_path))
     except OSError as e:
-        return f"[{config.CLIENT_ID}] Error listing directory: {e}", 500
+        return f"Error listing directory: {e}", 500
 
     html = [f"<h2>Directory: /{req_path}</h2><ul>"]
 
