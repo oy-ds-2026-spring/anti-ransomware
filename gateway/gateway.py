@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
+import os
 import random
 from flasgger import Swagger
 from dataclasses import dataclass, asdict
@@ -177,6 +178,45 @@ def create_op():
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
+
+
+# route to finance1234 node for HTML browsing
+@app.route("/browse", defaults={"req_path": ""})
+@app.route("/browse/<path:req_path>")
+def browse_fs(req_path):
+    """
+    Browse file system (HTML) via Gateway.
+    ---
+    tags:
+      - File Browser
+    parameters:
+      - in: path
+        name: req_path
+        type: string
+        required: false
+        description: The path to browse (relative to monitor dir)
+    responses:
+      200:
+        description: HTML content of the directory listing or file content
+      403:
+        description: Forbidden
+      404:
+        description: Not Found
+      500:
+        description: Internal server error
+    """
+    # randomly select one node
+    target = random.choice(FINANCE_NODES)
+
+    # Forward request to client
+    base_url = f"http://{target}:5000/browse"
+    url = f"{base_url}/{req_path}" if req_path else base_url
+
+    try:
+        resp = requests.get(url, timeout=5)
+        return resp.content, resp.status_code
+    except Exception as e:
+        return f"Gateway Error: {e}", 500
 
 
 # route to finance1 node(primary)

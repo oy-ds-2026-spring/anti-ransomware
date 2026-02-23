@@ -446,10 +446,10 @@ def browse_fs(req_path):
 
     # Security check
     if not abs_path.startswith(base_dir):
-        return "Forbidden", 403
+        return f"[{config.CLIENT_ID}] Forbidden", 403
 
     if not os.path.exists(abs_path):
-        return "Not Found", 404
+        return f"[{config.CLIENT_ID}] Not Found", 404
 
     if os.path.isfile(abs_path):
         try:
@@ -457,13 +457,13 @@ def browse_fs(req_path):
                 content = f.read()
             return f"<h3>File: {req_path}</h3><pre>{content}</pre>"
         except Exception as e:
-            return f"Error reading file: {e}", 500
+            return f"[{config.CLIENT_ID}] Error reading file: {e}", 500
 
     # Directory listing
     try:
         files = sorted(os.listdir(abs_path))
     except OSError as e:
-        return f"Error listing directory: {e}", 500
+        return f"[{config.CLIENT_ID}] Error listing directory: {e}", 500
 
     html = [f"<h2>Directory: /{req_path}</h2><ul>"]
 
