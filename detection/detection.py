@@ -38,8 +38,7 @@ WRITE_WINDOW_SEC = 10
 
 HIGH_ENTROPY_BASE = 7.4   # adaptive baseline
 LOCKDOWN_SCORE = 6
-COMPROMISED_SCORE = 4
-SUSPICIOUS_SCORE = 2
+SUSPICIOUS_SCORE = 3
 
 # save `current_state` to shared_log
 def save_state():
@@ -234,8 +233,6 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
     if score >= LOCKDOWN_SCORE and profile["state"] != "Locked":
         profile["state"] = "Locked"
         handle_malware(ch, client_id, file_path, entropy)
-    elif score >= COMPROMISED_SCORE:
-        profile["state"] = "Compromised"
         log_client_status(client_id, "Infected", entropy,
                           "High ransomware confidence")
     elif score >= SUSPICIOUS_SCORE:
