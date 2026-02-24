@@ -75,7 +75,7 @@ services:
   backup-storage:
     build: .
     container_name: backup-storage
-    command: python ./recovery/backup_server.py
+    command: python -m recovery.backup_server
     volumes:
       - ./recovery/backup:/data
     networks:
@@ -104,7 +104,7 @@ services:
       - CLIENT_ID=finance1
       - MONITOR_DIR=/data
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance4:4321
-      - RESTIC_REPOSITORY=rest:http://finance1:12345678@rest-server:8000/finance1/finance1
+      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
@@ -128,7 +128,7 @@ services:
       sh -lc '
         set -e;
         echo "[client] checking restic repo...";
-        restic snapshots >/dev/null 2>&1 || restic init;
+        restic snapshots >/dev/null 2>&1 || echo "[client] repo not ready yet";
         echo "[client] restic repo ok";
         exec python -m client.client_server
       '
@@ -139,7 +139,7 @@ services:
       - CLIENT_ID=finance2
       - MONITOR_DIR=/data
       - PEERS=client-finance1:4321,client-finance3:4321,client-finance4:4321
-      - RESTIC_REPOSITORY=rest:http://finance2:12345678@rest-server:8000/finance2/finance2
+      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
@@ -163,7 +163,7 @@ services:
       sh -lc '
         set -e;
         echo "[client] checking restic repo...";
-        restic snapshots >/dev/null 2>&1 || restic init;
+        restic snapshots >/dev/null 2>&1 || echo "[client] repo not ready yet";
         echo "[client] restic repo ok";
         exec python -m client.client_server
       '
@@ -174,7 +174,7 @@ services:
       - CLIENT_ID=finance3
       - MONITOR_DIR=/data
       - PEERS=client-finance1:4321,client-finance2:4321,client-finance4:4321
-      - RESTIC_REPOSITORY=rest:http://finance3:12345678@rest-server:8000/finance3/finance3
+      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app
@@ -198,7 +198,7 @@ services:
       sh -lc '
         set -e;
         echo "[client] checking restic repo...";
-        restic snapshots >/dev/null 2>&1 || restic init;
+        restic snapshots >/dev/null 2>&1 || echo "[client] repo not ready yet";
         echo "[client] restic repo ok";
         exec python -m client.client_server
       '
@@ -209,7 +209,7 @@ services:
       - CLIENT_ID=finance4
       - MONITOR_DIR=/data
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance1:4321
-      - RESTIC_REPOSITORY=rest:http://finance4:12345678@rest-server:8000/finance4/finance4
+      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
     volumes:
       - .:/app

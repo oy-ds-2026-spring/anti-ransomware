@@ -1,5 +1,5 @@
 import threading
-from receiver import snapshot_listener
+from rabbitmq_handler import snapshot_listener
 from backend import *
 
 

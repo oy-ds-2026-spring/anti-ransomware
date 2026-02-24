@@ -75,6 +75,9 @@ def snapshot_listener():
                             ok=False,
                             error=str(result),
                         )
+            elif msg.get("type") == "RESTORE_REQUEST":
+                clean_snapshot_id = msg.get("snapshot_id")
+                # TODO: send recovery request to client
             else:
                 print(f"[INFO] ignore msg type={msg.get('type')}")
         except Exception as e:
@@ -112,3 +115,4 @@ def publish_result(channel, client_id: str, ok: bool, restic_snapshot_id: Option
             content_type="application/json",
         ),
     )
+
