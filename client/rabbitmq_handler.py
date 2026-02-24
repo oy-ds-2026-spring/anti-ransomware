@@ -204,7 +204,7 @@ def sync_listener():
             channel.basic_consume(
                 queue=queue_name, on_message_callback=_on_sync_message, auto_ack=False
             )
-            Logger.sync("Listener started / Reconnected")
+            Logger.done("File sync listener started / Reconnected")
             channel.start_consuming()
         except Exception as e:
             Logger.warning(f"Sync listener connection lost. Error: {e}")

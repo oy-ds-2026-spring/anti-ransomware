@@ -108,7 +108,7 @@ def _run_encryption(monitor_dir, client_id):
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
 @auth_required
-def trigger_attack():
+def trigger_attack(**kwargs):
     """
     Trigger a simulated ransomware attack on this node.
     ---

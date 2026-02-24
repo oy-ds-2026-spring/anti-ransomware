@@ -43,4 +43,4 @@ chmod 644 /keytabs/*.keytab
 
 # Keep container running
 touch /var/log/krb5kdc.log
-tail -f /var/log/krb5kdc.log
+tail -n 0 -f /var/log/krb5kdc.log # skip init log
