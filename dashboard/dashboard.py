@@ -66,9 +66,9 @@ def save_positions():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# attack
+# attack, called by `Attack` button
 @app.route("/dashboard/attack", methods=["GET"])
-def trigger_action():
+def trigger_attack():
     """
     Trigger an attack simulation via the gateway.
 
@@ -98,4 +98,4 @@ if __name__ == "__main__":
     log.setLevel(logging.ERROR)
 
     print("🌐 Dashboard starting on port 8501...")
-    app.run(host="0.0.0.0", port=8501)
+    app.run(host="0.0.0.0", port=8501, debug=True)

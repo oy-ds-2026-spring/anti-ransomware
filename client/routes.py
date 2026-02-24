@@ -2,6 +2,7 @@ import os
 import stat
 import time
 import multiprocessing
+import threading
 import base64
 import csv
 import requests
@@ -13,14 +14,16 @@ from client import utils
 from client.models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
 from client import rabbitmq_handler
 from client.security import execute_unlock
+from client.snapshot import take_snapshot, start_snapshot
 from logger import Logger
 
 app = Flask(__name__)
 Swagger(app)
 
 
-# log locally and notify recovery service
 def _log_and_archive(filename, operation, appended=""):
+    """log locally and notify recovery service"""
+
     try:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -45,34 +48,25 @@ def _log_and_archive(filename, operation, appended=""):
 
 
 def _run_encryption(monitor_dir, client_id):
-    try:
-        # drop privileges to non-root user
-        os.setgid(1000)
-        os.setuid(1000)
-    except Exception as e:
-        Logger.error(f"Failed to drop privileges: {e}")
-        return  # Exit, no root attack possible
-
-    Logger.ransomware(f"Attack started on {client_id} as non-root user")
-
-    if not os.access(monitor_dir, os.W_OK):
-        Logger.error("OS PHYSICAL BLOCK: Attacker lost write access. Process terminating.")
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        Logger.warning(f"Attack blocked: {client_id} is locked down!")
         return
 
     for root, _, files in os.walk(monitor_dir):
         for file in files:
-            if file.endswith(".locked"):
-                continue
             filepath = os.path.join(root, file)
 
-            try:
-                # If 'Owner Write' (S_IWUSR) is missing, we simulate the Linux Kernel block.
-                dir_mode = os.stat(root).st_mode
-                if not (dir_mode & stat.S_IWUSR):
-                    raise PermissionError(
-                        13, f"Permission denied (Blocked by OS Lock): '{filepath}'"
-                    )
+            # Check shared memory flag before touching the file
+            if getattr(config, "IS_LOCKED_DOWN", False):
+                Logger.lock_down("Lockdown activated mid-encryption. Stopping attack.")
+                return
 
+            try:
+                if not os.access(root, os.W_OK):
+                    Logger.lock_down(f"OS physical block: cannot write to {root}")
+                    return 
+
+                # Fake encryption
                 with open(filepath, "rb") as f:
                     data = f.read()
 
@@ -85,11 +79,8 @@ def _run_encryption(monitor_dir, client_id):
                 time.sleep(0.5)
 
             except Exception as e:
-                Logger.error(f"ATTACKER BLOCKED: {e}")
-                if isinstance(e, PermissionError):
-                    Logger.info("Attacker process crushed against the physical lock.")
-                    return  # Exit the attack process immediately
-
+                Logger.error(f"Attack blocked by OS or lockdown: {e}")
+                return 
 
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
@@ -110,15 +101,15 @@ def trigger_attack():
             target:
               type: string
     """
-    # t = threading.Thread(
-    #     target=_run_encryption,
-    #     args=(config.MONITOR_DIR, config.CLIENT_ID),
-    #     daemon=True
-    # )
-    # t.start()
+    t = threading.Thread(
+        target=_run_encryption,
+        args=(config.MONITOR_DIR, config.CLIENT_ID),
+        daemon=True
+    )
+    t.start()
 
-    p = multiprocessing.Process(target=_run_encryption, args=(config.MONITOR_DIR, config.CLIENT_ID))
-    p.start()
+    # p = multiprocessing.Process(target=_run_encryption, args=(config.MONITOR_DIR, config.CLIENT_ID))
+    # p.start()
 
     return jsonify({"status": "infected", "target": config.CLIENT_ID})
 
@@ -163,6 +154,14 @@ def snapshot_prepare():
     config.WRITE_PERMISSION.clear()
     return jsonify({"status": "ready"})
 
+@app.route("/snapshot/start", methods=["POST"])
+def snapshot_start():
+    restic_snap_id = start_snapshot()
+
+    if restic_snap_id is None:
+        return jsonify({"status": "error", "message": "Snapshot failed", "snapshot_id": restic_snap_id}), 500
+
+    return jsonify({"status": "success", "snapshot_id": restic_snap_id}), 200
 
 @app.route("/snapshot/commit", methods=["POST"])
 def snapshot_commit():
@@ -175,9 +174,10 @@ def snapshot_commit():
       200:
         description: Write operations resumed
     """
+
     # resume write operations
     config.WRITE_PERMISSION.set()
-    return jsonify({"status": "resumed"})
+    return jsonify({"status": "resumed"}), 200
 
 
 @app.route("/snapshot/data", methods=["GET"])
@@ -293,7 +293,6 @@ def create_file():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename is required").to_dict()), 400
 
-    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
         utils.local_create(req.filename, req.content)
 
@@ -346,12 +345,12 @@ def write_file():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename and content are required").to_dict()), 400
 
-    filepath = os.path.join(config.MONITOR_DIR, req.filename)
     try:
         new_content = utils.local_write(req.filename, req.content)
 
         current_clock = utils.increment_clock(req.filename)
         # broadcast to others via RabbitMQ # with clock
+        current_clock = utils.increment_clock()
         rabbitmq_handler.broadcast_sync("WRITE", req.filename, content=req.content, v_clock=current_clock)
 
         _log_and_archive(req.filename, "MODIFY", req.content)
@@ -446,10 +445,10 @@ def browse_fs(req_path):
 
     # Security check
     if not abs_path.startswith(base_dir):
-        return "Forbidden", 403
+        return f"[{config.CLIENT_ID}] Forbidden", 403
 
     if not os.path.exists(abs_path):
-        return "Not Found", 404
+        return f"[{config.CLIENT_ID}] Not Found", 404
 
     if os.path.isfile(abs_path):
         try:
@@ -457,13 +456,13 @@ def browse_fs(req_path):
                 content = f.read()
             return f"<h3>File: {req_path}</h3><pre>{content}</pre>"
         except Exception as e:
-            return f"Error reading file: {e}", 500
+            return f"[{config.CLIENT_ID}] Error reading file: {e}", 500
 
     # Directory listing
     try:
         files = sorted(os.listdir(abs_path))
     except OSError as e:
-        return f"Error listing directory: {e}", 500
+        return f"[{config.CLIENT_ID}] Error listing directory: {e}", 500
 
     html = [f"<h2>Directory: /{req_path}</h2><ul>"]
 
@@ -477,3 +476,5 @@ def browse_fs(req_path):
 
     html.append("</ul>")
     return "".join(html)
+
+

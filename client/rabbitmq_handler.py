@@ -99,12 +99,12 @@ def _on_sync_message(ch, method, properties, body):
             
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
-        # after operation reply SYNC_ACK
-        if properties.reply_to:
+        # after operation reply SYNC_ACK, `finance_sync_ack`
+        if msg.get("sender"):
             try:
                 ch.basic_publish(
-                    exchange="",
-                    routing_key=properties.reply_to,
+                    exchange="finance_sync_ack",
+                    routing_key=msg.get("sender"),
                     properties=pika.BasicProperties(
                         correlation_id=properties.correlation_id
                     ),
@@ -190,6 +190,7 @@ def sync_listener():
             # connect
             _, channel = _get_channel()
             channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
+            channel.exchange_declare(exchange="finance_sync_ack", exchange_type="direct")
             
             # use durable queue instead of temp queue
             queue_name = f"sync_queue_{config.CLIENT_ID}"
@@ -222,7 +223,11 @@ def broadcast_sync(operation, filename, content="", v_clock=None):
         # connect
         connection, channel = _get_channel()
         channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
+        channel.exchange_declare(exchange="finance_sync_ack", exchange_type="direct")
         callback_queue = channel.queue_declare(queue="", exclusive=True).method.queue
+        channel.queue_bind(
+            exchange="finance_sync_ack", queue=callback_queue, routing_key=config.CLIENT_ID
+        )
         
         # publish command
         corr_id = str(uuid.uuid4())
@@ -230,14 +235,12 @@ def broadcast_sync(operation, filename, content="", v_clock=None):
         channel.basic_publish(
             exchange="finance_sync",
             routing_key="",
-            properties=pika.BasicProperties(
-                reply_to=callback_queue, correlation_id=corr_id
-            ),
+            properties=pika.BasicProperties(reply_to=callback_queue, correlation_id=corr_id),
             body=json.dumps(payload),
         )
         Logger.sync(f"request for {operation}, {filename}, {content}")
 
-        # starts to count ACK number
+        # starts to count ACK number, `finance_sync_ack`
         ack_count = 0
 
         def on_ack(ch, method, props, body):
