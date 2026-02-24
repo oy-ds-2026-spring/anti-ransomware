@@ -39,7 +39,7 @@ else:
 # close kerberos auth if dev env
 def auth_required(f):
     if gss_auth:
-        return gss_auth.login_required(f)
+        return gss_auth.require_auth()(f)
     return f
 
 
@@ -137,7 +137,6 @@ def trigger_attack():
 
 
 @app.route("/unlock", methods=["GET", "POST"])
-@auth_required
 def unlock_system():
     """
     Unlock the system after a lockdown.
@@ -163,7 +162,6 @@ def unlock_system():
 
 # Snapshot Coordination Endpoints
 @app.route("/snapshot/prepare", methods=["POST"])
-@auth_required
 def snapshot_prepare():
     """
     Prepare for a snapshot by pausing write operations.
@@ -195,7 +193,6 @@ def snapshot_start():
 
 
 @app.route("/snapshot/commit", methods=["POST"])
-@auth_required
 def snapshot_commit():
     """
     Commit the snapshot and resume write operations.
@@ -213,7 +210,6 @@ def snapshot_commit():
 
 
 @app.route("/snapshot/data", methods=["GET"])
-@auth_required
 def snapshot_data():
     """
     Retrieve all files in the monitor directory encoded in base64.
@@ -244,9 +240,10 @@ def snapshot_data():
 
 # param: filename
 # return: file content
+# `kwargs` to solve the arg issue after adding kerberos auth
 @app.route("/read", methods=["POST"])
 @auth_required
-def read_file():
+def read_file(**kwargs):
     """
     Read a file's content.
     ---
@@ -295,7 +292,7 @@ def read_file():
 # return: success status
 @app.route("/create", methods=["POST"])
 @auth_required
-def create_file():
+def create_file(**kwargs):
     """
     Create a new file.
     ---
@@ -347,7 +344,7 @@ def create_file():
 # return: file content after modification
 @app.route("/write", methods=["POST"])
 @auth_required
-def write_file():
+def write_file(**kwargs):
     """
     Append content to an existing file.
     ---
@@ -400,7 +397,7 @@ def write_file():
 # return: success status
 @app.route("/delete", methods=["POST"])
 @auth_required
-def delete_file():
+def delete_file(**kwargs):
     """
     Delete a file.
     ---
@@ -455,7 +452,7 @@ def delete_file():
 @app.route("/browse", defaults={"req_path": ""})
 @app.route("/browse/<path:req_path>")
 @auth_required
-def browse_fs(req_path):
+def browse_fs(req_path, **kwargs):
     """
     Browse the file system of the monitored directory.
     ---

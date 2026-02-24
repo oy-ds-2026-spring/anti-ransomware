@@ -1,19 +1,28 @@
 import threading
+import subprocess
+import time
+import os
+import sys
 from receiver import snapshot_listener
-from backend import *
+from routes import *
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger import Logger
 
 
 if __name__ == "__main__":
-    # Initialize Kerberos Ticket
+    # initialize kerberos ticket ######################################
+    # gateway does not require http auth from user, it only needs the key
+    # to visit clients.
     keytab_file = "/keytabs/gateway.keytab"
     for _ in range(15):
         if os.path.exists(keytab_file):
             try:
                 subprocess.run(["kinit", "-kt", keytab_file, "gateway"], check=True)
-                print("Kerberos initialized successfully.")
+                Logger.done("Kerberos initialized.")
                 break
             except Exception as e:
-                print(f"Warning: Kerberos init failed: {e}")
+                Logger.warning(f"Warning: Kerberos init failed: {e}")
         time.sleep(2)
 
     threading.Thread(target=snapshot_listener, daemon=True).start()

@@ -6,6 +6,14 @@ from flasgger import Swagger
 from dataclasses import dataclass, asdict
 from typing import Optional
 
+# whether gateway uses kerberos key depends on
+# `whether lib requests_gssapi is installed`
+# for debugging
+try:
+    from requests_gssapi import HTTPSPNEGOAuth
+except ImportError:
+    HTTPSPNEGOAuth = None
+
 app = Flask(__name__)
 Swagger(app)
 
@@ -15,6 +23,9 @@ FINANCE_NODES = [
     "client-finance3",
     "client-finance4",
 ]
+
+# Kerberos Auth Object
+krb_auth = HTTPSPNEGOAuth() if HTTPSPNEGOAuth else None
 
 
 @dataclass
@@ -87,7 +98,9 @@ def read_op():
     target = random.choice(FINANCE_NODES)
     try:
         payload = asdict(req)
-        resp = requests.post(f"http://{target}:5000/read", json=payload, timeout=3)
+        # take the ticket to request
+        # but the ticket is only used if challenged
+        resp = requests.post(f"http://{target}:5000/read", json=payload, timeout=3, auth=krb_auth)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -131,7 +144,9 @@ def write_op():
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     try:
-        resp = requests.post("http://client-finance1:5000/write", json=asdict(req), timeout=10)
+        resp = requests.post(
+            "http://client-finance1:5000/write", json=asdict(req), timeout=10, auth=krb_auth
+        )
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -174,7 +189,9 @@ def create_op():
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     try:
-        resp = requests.post("http://client-finance1:5000/create", json=asdict(req), timeout=10)
+        resp = requests.post(
+            "http://client-finance1:5000/create", json=asdict(req), timeout=10, auth=krb_auth
+        )
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -213,7 +230,7 @@ def browse_fs(req_path):
     url = f"{base_url}/{req_path}" if req_path else base_url
 
     try:
-        resp = requests.get(url, timeout=5)
+        resp = requests.get(url, timeout=5, auth=krb_auth)
         return resp.content, resp.status_code
     except Exception as e:
         return f"Gateway Error: {e}", 500
@@ -253,7 +270,9 @@ def delete_op():
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     try:
-        resp = requests.post("http://client-finance1:5000/delete", json=asdict(req), timeout=10)
+        resp = requests.post(
+            "http://client-finance1:5000/delete", json=asdict(req), timeout=10, auth=krb_auth
+        )
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -274,7 +293,7 @@ def attack_op():
         description: Internal server error
     """
     try:
-        resp = requests.get("http://client-finance1:5000/attack", timeout=5)
+        resp = requests.get("http://client-finance1:5000/attack", timeout=5, auth=krb_auth)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
