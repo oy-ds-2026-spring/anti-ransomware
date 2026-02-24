@@ -350,7 +350,6 @@ def write_file():
 
         current_clock = utils.increment_clock(req.filename)
         # broadcast to others via RabbitMQ # with clock
-        current_clock = utils.increment_clock()
         rabbitmq_handler.broadcast_sync("WRITE", req.filename, content=req.content, v_clock=current_clock)
 
         _log_and_archive(req.filename, "MODIFY", req.content)
