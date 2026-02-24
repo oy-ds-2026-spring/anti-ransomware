@@ -15,15 +15,16 @@ from logger import Logger
 
 
 if __name__ == "__main__":
-    Logger.info(f"Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
+    Logger.done(f"Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
 
-    # Initialize Kerberos
+    # initialize kerberos ##############################################
     keytab_file = f"/keytabs/{config.CLIENT_ID}.keytab"
     for _ in range(15):
         if os.path.exists(keytab_file):
             try:
+                # (cmd) `kinit`: register and get auth ticket from KDC, keytab_file as the id card.
                 subprocess.run(["kinit", "-kt", keytab_file, config.CLIENT_ID], check=True)
-                Logger.info("Kerberos ticket initialized.")
+                Logger.done("Kerberos ticket initialized.")
                 break
             except Exception as e:
                 Logger.warning(f"Kerberos init failed: {e}")
@@ -38,7 +39,6 @@ if __name__ == "__main__":
 
     # start gRPC server
     threading.Thread(target=grpc_server.serve, daemon=True).start()
-
 
     # watchdog: what to do when file operation observed ###################
     event_handler = EntropyMonitor()

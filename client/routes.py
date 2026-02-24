@@ -9,6 +9,9 @@ import requests
 from flask import Flask, jsonify, request
 from flasgger import Swagger
 
+# import python lib for kerberos
+# whether kerberos auth is on depends on `whether flask_gssapi is installed`
+# for easier dev debugging
 try:
     from flask_gssapi import GSSAPI
 except ImportError:
@@ -26,13 +29,14 @@ app = Flask(__name__)
 Swagger(app)
 
 # Configure Kerberos/GSSAPI
-if GSSAPI:
+if GSSAPI:  # if no lib is installed, it's a dev env, don't user kerberos
     app.config["GSSAPI_SPNEGO"] = True
     gss_auth = GSSAPI(app)
 else:
     gss_auth = None
 
 
+# close kerberos auth if dev env
 def auth_required(f):
     if gss_auth:
         return gss_auth.login_required(f)
@@ -82,7 +86,7 @@ def _run_encryption(monitor_dir, client_id):
             try:
                 if not os.access(root, os.W_OK):
                     Logger.lock_down(f"OS physical block: cannot write to {root}")
-                    return 
+                    return
 
                 # Fake encryption
                 with open(filepath, "rb") as f:
@@ -98,7 +102,8 @@ def _run_encryption(monitor_dir, client_id):
 
             except Exception as e:
                 Logger.error(f"Attack blocked by OS or lockdown: {e}")
-                return 
+                return
+
 
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
@@ -121,9 +126,7 @@ def trigger_attack():
               type: string
     """
     t = threading.Thread(
-        target=_run_encryption,
-        args=(config.MONITOR_DIR, config.CLIENT_ID),
-        daemon=True
+        target=_run_encryption, args=(config.MONITOR_DIR, config.CLIENT_ID), daemon=True
     )
     t.start()
 
@@ -175,14 +178,21 @@ def snapshot_prepare():
     config.WRITE_PERMISSION.clear()
     return jsonify({"status": "ready"})
 
+
 @app.route("/snapshot/start", methods=["POST"])
 def snapshot_start():
     restic_snap_id = start_snapshot()
 
     if restic_snap_id is None:
-        return jsonify({"status": "error", "message": "Snapshot failed", "snapshot_id": restic_snap_id}), 500
+        return (
+            jsonify(
+                {"status": "error", "message": "Snapshot failed", "snapshot_id": restic_snap_id}
+            ),
+            500,
+        )
 
     return jsonify({"status": "success", "snapshot_id": restic_snap_id}), 200
+
 
 @app.route("/snapshot/commit", methods=["POST"])
 @auth_required
@@ -503,5 +513,3 @@ def browse_fs(req_path):
 
     html.append("</ul>")
     return "".join(html)
-
-

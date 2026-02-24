@@ -44,6 +44,7 @@ def _on_sync_message(ch, method, properties, body):
 
 # mq connection
 def _get_channel():
+    # mq weak auth
     credentials = pika.PlainCredentials("guest", "guest")
     connection = pika.BlockingConnection(
         pika.ConnectionParameters(host=config.BROKER_HOST, credentials=credentials)
