@@ -47,26 +47,46 @@ def local_delete(filename):
 
 
 # vector lock: add 1 to the clock when local writes
-def increment_clock():
+def increment_clock(filename):
     with config.CLOCK_LOCK:
-        config.VECTOR_CLOCK[config.CLIENT_ID] = config.VECTOR_CLOCK.get(config.CLIENT_ID, 0) + 1
-        return config.VECTOR_CLOCK.copy()
+        if filename not in config.FILE_CLOCKS:
+            config.FILE_CLOCKS[filename] = {}
+        current_val = config.FILE_CLOCKS[filename].get(config.CLIENT_ID, 0)
+        config.FILE_CLOCKS[filename][config.CLIENT_ID] = current_val + 1
+        return config.FILE_CLOCKS[filename].copy()
+        # config.VECTOR_CLOCK[config.CLIENT_ID] = (
+        #     config.VECTOR_CLOCK.get(config.CLIENT_ID, 0) + 1
+        # )
+        # return config.VECTOR_CLOCK.copy()
 
 
-# merge clock ( max(clocks) + 1 ) when receving sync message
-def merge_clock(incoming_clock):
+# merge clock ( max(clocks) + 1 ) when receiving sync message
+def merge_clock(filename, incoming_clock):
     with config.CLOCK_LOCK:
+        if filename not in config.FILE_CLOCKS:
+            config.FILE_CLOCKS[filename] = {}
+        local_clock = config.FILE_CLOCKS[filename]
+        
+        # 
         for node, time_val in incoming_clock.items():
-            config.VECTOR_CLOCK[node] = max(config.VECTOR_CLOCK.get(node, 0), time_val)
+            local_clock[node] = max(local_clock.get(node, 0), time_val)
+            # config.VECTOR_CLOCK[node] = max(config.VECTOR_CLOCK.get(node, 0), time_val)
+            
         # merge indicate local receive and processes the event
         # time should move forward
-        config.VECTOR_CLOCK[config.CLIENT_ID] = config.VECTOR_CLOCK.get(config.CLIENT_ID, 0) + 1
-        return config.VECTOR_CLOCK.copy()
+        # config.VECTOR_CLOCK[config.CLIENT_ID] = (
+        #     config.VECTOR_CLOCK.get(config.CLIENT_ID, 0) + 1
+        # )
+        # return config.VECTOR_CLOCK.copy()
+        local_clock[config.CLIENT_ID] = local_clock.get(config.CLIENT_ID, 0) + 1
+        return local_clock.copy()
 
 
-def get_clock():
+def get_clock(filename):
     with config.CLOCK_LOCK:
-        return config.VECTOR_CLOCK.copy()
+        return config.FILE_CLOCKS.get(filename, {}).copy()
+    # with config.CLOCK_LOCK:
+    #     return config.VECTOR_CLOCK.copy()
 
 
 def is_header_modified(filepath, ext):
@@ -108,7 +128,9 @@ def read_sampled_data(filepath):
             for i in range(config.NUM_BLOCKS):
                 # allocate start and end
                 region_start = i * region_size
-                max_offset = max(region_start, region_start + region_size - config.BLOCK_SIZE)
+                max_offset = max(
+                    region_start, region_start + region_size - config.BLOCK_SIZE
+                )
 
                 # apply random read
                 offset = random.randint(region_start, max_offset)
@@ -120,3 +142,24 @@ def read_sampled_data(filepath):
     except Exception as e:
         Logger.warning(f"Failed to read {filepath} | Error: {e}")
         return b""
+
+
+def detect_conflict(local_clock, incoming_clock):
+    # detects if two vector clocks are conflicted (concurrent)
+    # is concurrent if a !>= b, and b !>= a
+    local_is_greater_or_equal = True
+    incoming_is_greater_or_equal = True
+
+    all_keys = set(local_clock.keys()).union(set(incoming_clock.keys()))
+    for k in all_keys:
+        lv = local_clock.get(k, 0)
+        iv = incoming_clock.get(k, 0)
+        if lv < iv:
+            local_is_greater_or_equal = False
+        if iv < lv:
+            incoming_is_greater_or_equal = False
+
+    # conflict
+    if not local_is_greater_or_equal and not incoming_is_greater_or_equal:
+        return True
+    return False

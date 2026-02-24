@@ -328,9 +328,9 @@ def create_file(**kwargs):
     try:
         utils.local_create(req.filename, req.content)
 
+        current_clock = utils.increment_clock(req.filename)
         # broadcast to others via RabbitMQ
-        current_clock = utils.increment_clock()
-        rabbitmq_handler.broadcast_sync("CREATE", req.filename, req.content, current_clock)
+        rabbitmq_handler.broadcast_sync("CREATE", req.filename, content=req.content, v_clock=current_clock)
 
         _log_and_archive(req.filename, "CREATE", req.content)
 
@@ -381,9 +381,9 @@ def write_file(**kwargs):
     try:
         new_content = utils.local_write(req.filename, req.content)
 
+        current_clock = utils.increment_clock(req.filename)
         # broadcast to others via RabbitMQ # with clock
-        current_clock = utils.increment_clock()
-        rabbitmq_handler.broadcast_sync("WRITE", req.filename, req.content, current_clock)
+        rabbitmq_handler.broadcast_sync("WRITE", req.filename, content=req.content, v_clock=current_clock)
 
         _log_and_archive(req.filename, "MODIFY", req.content)
 
@@ -437,9 +437,9 @@ def delete_file(**kwargs):
 
         utils.local_delete(req.filename)
 
+        current_clock = utils.increment_clock(req.filename)
         # broadcast to others via RabbitMQ # with clock
-        current_clock = utils.increment_clock()
-        rabbitmq_handler.broadcast_sync("DELETE", req.filename, current_clock)
+        rabbitmq_handler.broadcast_sync("DELETE", req.filename, v_clock=current_clock)
 
         _log_and_archive(req.filename, "DELETE", "")
 

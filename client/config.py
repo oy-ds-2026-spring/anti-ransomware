@@ -12,7 +12,7 @@ RESTIC_REPOSITORY = os.getenv(
 RESTIC_PASSWORD_FILE = os.getenv("RESTIC_PASSWORD_FILE", "/run/secrets/restic_repo_pass")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 
-VECTOR_CLOCK = {"finance1": 0, "finance2": 0, "finance3": 0, "finance4": 0, CLIENT_ID: 0}
+VECTOR_CLOCK = {CLIENT_ID: 0}
 
 CLOCK_LOCK = threading.Lock()
 
@@ -39,5 +39,7 @@ PROPER_HEADS = {
     ".rar": b"Rar!\x1a\x07",
     ".gz": b"\x1f\x8b",
 }
+
+FILE_CLOCKS = {}
 
 # print(f"[INIT] State module loaded. Client ID: {CLIENT_ID}")
