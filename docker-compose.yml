@@ -345,5 +345,6 @@ networks:
   ransom_net:
     driver: bridge
 
+# run-time shared folder
 volumes:
   keytabs:
