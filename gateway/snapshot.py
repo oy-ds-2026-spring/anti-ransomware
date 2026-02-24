@@ -167,9 +167,11 @@ def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0
     up_node, healthy = health_check(all_ready, results)
 
     if up_node is None:
-        return None, False, None, {"error": "All nodes unreachable"}
+        return False, None, {"error": "All nodes unreachable"}
 
     try:
+        successful_nodes = []
+        err_msg = {}
         for up_node in healthy:
             node, ok, status, data = send_request(
                 node=up_node,
@@ -179,6 +181,11 @@ def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0
             )
             if ok:
                 Logger.info(f"[GATEWAY] Snapshot recovered successfully on node {node}. Recovered snapshot id: {clean_snapshot_id}")
+                successful_nodes.append(node)
+            else:
+                Logger.warning(f"[GATEWAY] Snapshot recovered failed on node {node}")
+                err_msg[node] = data
+        return True, successful_nodes, {'error': err_msg}
     except Exception as e:
-        print(f"[ERROR] send_request exception: {e}")
-        return up_node, False, "exception", {"error": str(e)}
+        Logger.error(f"[ERROR] send_request exception: {e}")
+        return False, None, {'error': str(e)}

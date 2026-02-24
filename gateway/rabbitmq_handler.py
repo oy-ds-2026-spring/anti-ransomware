@@ -5,6 +5,8 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 import pika
+
+from gateway.snapshot import send_recovery
 from snapshot import send_snapshot
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
@@ -53,9 +55,10 @@ def snapshot_listener():
                         command_id=None,
                         ok=False,
                         error="missing command_id",
+                        type="regular",
                     )
                 else:
-                    node, ok, status, result = send_snapshot(command_id)
+                    node, ok, ok, result = send_snapshot(command_id)
 
                     if ok:
                         publish_result(
@@ -65,6 +68,7 @@ def snapshot_listener():
                             command_id=command_id,
                             ok=True,
                             error=None,
+                            type="regular",
                         )
                     else:
                         publish_result(
@@ -74,10 +78,20 @@ def snapshot_listener():
                             command_id=command_id,
                             ok=False,
                             error=str(result),
+                            type="regular",
                         )
             elif msg.get("type") == "RESTORE_REQUEST":
                 clean_snapshot_id = msg.get("snapshot_id")
-                # TODO: send recovery request to client
+                command_id = msg.get("command_id")
+                ok, successful_nodes, message = send_recovery(command_id, clean_snapshot_id)
+                publish_result(
+                    ch,
+                    client_id=successful_nodes,
+                    command_id=command_id,
+                    ok = ok,
+                    error = message,
+                    type="recover"
+                )
             else:
                 print(f"[INFO] ignore msg type={msg.get('type')}")
         except Exception as e:
@@ -97,22 +111,49 @@ def snapshot_listener():
     print("listening on", QUEUE)
     ch.start_consuming()
 
-def publish_result(channel, client_id: str, ok: bool, restic_snapshot_id: Optional[str] = None, command_id: Optional[str] = None, error: Optional[str] = None):
-    msg = {
-        "type": "SNAPSHOT_DONE" if ok else "SNAPSHOT_FAILED",
-        "client_id": client_id,
-        "restic_snapshot_id": restic_snapshot_id,
-        "command_id": command_id,
-        "ts": int(time.time()),
-        "error": error,
-    }
-    channel.basic_publish(
-        exchange="",
-        routing_key=RESULT_QUEUE,
-        body=json.dumps(msg).encode("utf-8"),
-        properties=pika.BasicProperties(
-            delivery_mode=2,
-            content_type="application/json",
-        ),
-    )
+def publish_result(
+        channel,
+        ok: bool,
+        client_id: Optional[str] = None,
+        restic_snapshot_id: Optional[str] = None,
+        command_id: Optional[str] = None,
+        error: Optional[str] = None,
+        type: str = "regular",
+):
+    if type == "regular":
+        msg = {
+            "type": "SNAPSHOT_DONE" if ok else "SNAPSHOT_FAILED",
+            "client_id": client_id,
+            "restic_snapshot_id": restic_snapshot_id,
+            "command_id": command_id,
+            "ts": int(time.time()),
+            "error": error,
+        }
+        channel.basic_publish(
+            exchange="",
+            routing_key=RESULT_QUEUE,
+            body=json.dumps(msg).encode("utf-8"),
+            properties=pika.BasicProperties(
+                delivery_mode=2,
+                content_type="application/json",
+            ),
+        )
+    elif type == "recover":
+
+        msg = {
+            "type": "RESTORE_SUCCESS" if ok else "RESTORE_FAILED",
+            "command_id": command_id,
+            "client_id": client_id,
+            "error": error,
+        }
+
+        channel.basic_publish(
+            exchange="",
+            routing_key=RESULT_QUEUE,
+            body=json.dumps(msg).encode("utf-8"),
+            properties=pika.BasicProperties(
+                delivery_mode=2,
+                content_type="application/json",
+            ),
+        )
 
