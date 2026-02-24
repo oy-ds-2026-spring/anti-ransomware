@@ -57,6 +57,8 @@ def flush_offline_queue(channel):
 
 def _on_sync_message(ch, method, properties, body):
     msg = json.loads(body)
+    filename = msg.get("filename")
+    incoming_clock = msg.get("v_clock", {})
 
     # not listen to self
     if msg.get("sender") == config.CLIENT_ID:
@@ -68,7 +70,7 @@ def _on_sync_message(ch, method, properties, body):
 
     # get and merge the clock
     incoming_clock = msg.get("v_clock", {})
-    local_clock = utils.get_clock()
+    # local_clock = utils.get_clock()
 
     op, filename, content = (
         msg.get("operation"),
@@ -76,14 +78,16 @@ def _on_sync_message(ch, method, properties, body):
         msg.get("content", ""),
     )
     
-    is_conflict = utils.detect_conflict(local_clock, incoming_clock)
+    local_file_clock = utils.get_clock(filename)
+    is_conflict = utils.detect_conflict(local_file_clock, incoming_clock)
+    # is_conflict = utils.detect_conflict(local_clock, incoming_clock)
     if is_conflict and op in ["WRITE", "CREATE"]:
         Logger.error(f" CONFLICT DETECTED on {filename}!")
-        Logger.error(f"   -> Local: {local_clock} | Incoming: {incoming_clock}")
+        Logger.error(f"   -> Local: {local_file_clock} | Incoming: {incoming_clock}")
         # if conflict: combine both data and add mark to indicate conflict
         content = f"\n\n[=== CONFLICT DETECTED FROM {msg.get('sender')} ===]\n" + content
 
-    utils.merge_clock(incoming_clock)
+    utils.merge_clock(filename, incoming_clock)
 
     try:
         if op == "CREATE":
@@ -135,7 +139,7 @@ def send_msg(file_path, entropy, event_type):
             "entropy": entropy,
             "event_type": event_type,
             "timestamp": time.time(),
-            "v_clock": utils.get_clock(),
+            "v_clock": utils.get_clock(os.path.basename(file_path)),
         }
 
         channel.basic_publish(
@@ -212,7 +216,7 @@ def broadcast_sync(operation, filename, content="", v_clock=None):
         "operation": operation,
         "filename": filename,
         "content": content,
-        "v_clock": v_clock or utils.get_clock(),
+        "v_clock": v_clock or utils.get_clock(filename),
     }
     
     try:
