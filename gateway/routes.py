@@ -112,6 +112,30 @@ def _send_to_primary(endpoint, method="POST", json_data=None):
     # no one alive
     raise Exception("All finance nodes are down!")
 
+# read: retry, until every client is confirmed dead
+def _send_to_any(endpoint, method="POST", json_data=None, timeout=3):
+    nodes = list(FINANCE_NODES)
+    random.shuffle(nodes)
+    
+    last_error = None
+    
+    for node in nodes:
+        try:
+            url = f"http://{node}:5000{endpoint}"
+            
+            if method == "POST":
+                resp = requests.post(url, json=json_data, timeout=timeout, auth=krb_auth)
+            else:
+                resp = requests.get(url, timeout=timeout, auth=krb_auth)
+            
+            if resp.status_code < 500:
+                return resp
+        except Exception as e:
+            last_error = e
+            continue
+    
+    raise last_error if last_error else Exception("All finance nodes are down")
+
 # route to finance1234 node
 @app.route("/finance/read", methods=["POST"])
 def read_op():
@@ -145,13 +169,8 @@ def read_op():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
-    # randomly select one node
-    target = random.choice(FINANCE_NODES)
     try:
-        payload = asdict(req)
-        # take the ticket to request
-        # but the ticket is only used if challenged
-        resp = requests.post(f"http://{target}:5000/read", json=payload, timeout=3, auth=krb_auth)
+        resp = _send_to_any("/read", method="POST", json_data=asdict(req))
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -269,15 +288,10 @@ def browse_fs(req_path):
       500:
         description: Internal server error
     """
-    # randomly select one node
-    target = random.choice(FINANCE_NODES)
-
-    # Forward request to client
-    base_url = f"http://{target}:5000/browse"
-    url = f"{base_url}/{req_path}" if req_path else base_url
+    endpoint = f"/browse/{req_path}" if req_path else "/browse"
 
     try:
-        resp = requests.get(url, timeout=5, auth=krb_auth)
+        resp = _send_to_any(endpoint, method="GET", timeout=5)
         return resp.content, resp.status_code
     except Exception as e:
         return f"Gateway Error: {e}", 500
