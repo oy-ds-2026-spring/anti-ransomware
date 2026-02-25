@@ -8,6 +8,7 @@ import threading
 from client import config
 from client import utils
 from logger import Logger
+from client.utils import is_duplicate_request
 
 # offline outbox
 OFFLINE_QUEUE_FILE = os.path.join(config.MONITOR_DIR, f"offline_{config.CLIENT_ID}.json")
@@ -58,6 +59,11 @@ def flush_offline_queue(channel):
 def _on_sync_message(ch, method, properties, body):
     msg = json.loads(body)
     filename = msg.get("filename")
+
+    if is_duplicate_request(msg.get("request_id")):
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        return
+
     incoming_clock = msg.get("v_clock", {})
 
     # not listen to self
@@ -211,13 +217,14 @@ def sync_listener():
             time.sleep(5)
 
 
-def broadcast_sync(operation, filename, content="", v_clock=None):
+def broadcast_sync(operation, filename, content="", v_clock=None, request_id=None):
     payload = {
         "sender": config.CLIENT_ID,
         "operation": operation,
         "filename": filename,
         "content": content,
         "v_clock": v_clock or utils.get_clock(filename),
+        "request_id": request_id,
     }
     
     try:

@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import requests
 import os
 import random
+import uuid
 from flasgger import Swagger
 from dataclasses import dataclass, asdict
 from typing import Optional
@@ -214,7 +215,11 @@ def write_op():
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     try:
-        resp = _send_to_primary("/write", method="POST", json_data=asdict(req))
+        # give global unique ID to a write request
+        payload = asdict(req)
+        payload["request_id"] = str(uuid.uuid4())
+        Logger.info(payload["request_id"])
+        resp = _send_to_primary("/write", method="POST", json_data=payload)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -257,7 +262,10 @@ def create_op():
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     try:
-        resp = _send_to_primary("/create", method="POST", json_data=asdict(req))
+        # give global unique ID to a write request
+        payload = asdict(req)
+        payload["request_id"] = str(uuid.uuid4())
+        resp = _send_to_primary("/create", method="POST", json_data=payload)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -331,7 +339,10 @@ def delete_op():
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     try:
-        resp = _send_to_primary("/delete", method="POST", json_data=asdict(req))
+        # give global unique ID to a write request
+        payload = asdict(req)
+        payload["request_id"] = str(uuid.uuid4())
+        resp = _send_to_primary("/delete", method="POST", json_data=payload)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
