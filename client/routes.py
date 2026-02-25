@@ -17,6 +17,11 @@ try:
 except ImportError:
     GSSAPI = None
 
+try:
+    from requests_gssapi import HTTPSPNEGOAuth
+except ImportError:
+    HTTPSPNEGOAuth = None
+
 from client import config
 from client import utils
 from client.models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
@@ -36,6 +41,7 @@ if GSSAPI:  # if no lib is installed, it's a dev env, don't user kerberos
 else:
     gss_auth = None
 
+krb_auth = HTTPSPNEGOAuth() if HTTPSPNEGOAuth else None
 
 # close kerberos auth if dev env
 def auth_required(f):
@@ -108,6 +114,18 @@ def _run_encryption(monitor_dir, client_id):
                 return
 
 
+def _propagate_attack():
+    peers = os.getenv("PEERS", "").split(",")
+    for peer in peers:
+        if not peer.strip():
+            continue
+        host = peer.split(":")[0]
+        try:
+            Logger.info(f"Propagating attack to {host}...")
+            requests.get(f"http://{host}:5000/attack", params={"propagated": "true"}, auth=krb_auth, timeout=1)
+        except Exception:
+            pass
+
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
 @auth_required
@@ -135,6 +153,10 @@ def trigger_attack(**kwargs):
 
     # p = multiprocessing.Process(target=_run_encryption, args=(config.MONITOR_DIR, config.CLIENT_ID))
     # p.start()
+
+    # Only propagate if this node is the origin (not triggered by another node)
+    if request.args.get("propagated") != "true":
+        threading.Thread(target=_propagate_attack, daemon=True).start()
 
     return jsonify({"status": "infected", "target": config.CLIENT_ID})
 
