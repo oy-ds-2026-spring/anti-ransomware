@@ -67,7 +67,6 @@ def merge_clock(filename, incoming_clock):
             config.FILE_CLOCKS[filename] = {}
         local_clock = config.FILE_CLOCKS[filename]
         
-        # 
         for node, time_val in incoming_clock.items():
             local_clock[node] = max(local_clock.get(node, 0), time_val)
             # config.VECTOR_CLOCK[node] = max(config.VECTOR_CLOCK.get(node, 0), time_val)
@@ -78,7 +77,9 @@ def merge_clock(filename, incoming_clock):
         #     config.VECTOR_CLOCK.get(config.CLIENT_ID, 0) + 1
         # )
         # return config.VECTOR_CLOCK.copy()
-        local_clock[config.CLIENT_ID] = local_clock.get(config.CLIENT_ID, 0) + 1
+        
+        # dont need this since we do file-level vector clock
+        # local_clock[config.CLIENT_ID] = local_clock.get(config.CLIENT_ID, 0) + 1 
         return local_clock.copy()
 
 
