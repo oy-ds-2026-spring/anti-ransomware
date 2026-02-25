@@ -241,27 +241,31 @@ def broadcast_sync(operation, filename, content="", v_clock=None):
         )
         Logger.sync(f"request for {operation}, {filename}, {content}")
 
-        # starts to count ACK number, `finance_sync_ack`
-        ack_count = 0
+        # ! ACK logic deleted, trust rabbitMQ on this, boost primary client-node efficiency
+        # ! And this means when finance1 is dead, finance2 can continue to lead writing.
 
-        def on_ack(ch, method, props, body):
-            nonlocal ack_count
-            if props.correlation_id == corr_id:
-                ack_count += 1
+        # # starts to count ACK number, `finance_sync_ack`
+        # ack_count = 0
 
-        # starts listening ack
-        channel.basic_consume(
-            queue=callback_queue, on_message_callback=on_ack, auto_ack=True
-        )
+        # def on_ack(ch, method, props, body):
+        #     nonlocal ack_count
+        #     if props.correlation_id == corr_id:
+        #         ack_count += 1
 
-        start_time = time.time()
-        # wait for 3 ACKs (assuming 4 nodes total, 1 sender, 3 receivers)
-        while ack_count < 3 and (time.time() - start_time) <= 10:
-            connection.process_data_events(time_limit=1)
-        if ack_count < 3:
-            Logger.warning(f"Sync timeout. Received {ack_count}/3 ACKs.")
-        else:
-            Logger.done(f"SYNC_OK Received {ack_count} ACKs")
+        # # starts listening ack
+        # channel.basic_consume(
+        #     queue=callback_queue, on_message_callback=on_ack, auto_ack=True
+        # )
+
+        # start_time = time.time()
+        # # wait for 3 ACKs (assuming 4 nodes total, 1 sender, 3 receivers)
+        # while ack_count < 3 and (time.time() - start_time) <= 10:
+        #     connection.process_data_events(time_limit=1)
+        # if ack_count < 3:
+        #     Logger.warning(f"Sync timeout. Received {ack_count}/3 ACKs.")
+        # else:
+        #     Logger.done(f"SYNC_OK Received {ack_count} ACKs")
+
         connection.close()
     except Exception as e:
         Logger.error(f"Cannot reach RabbitMQ: {e}")

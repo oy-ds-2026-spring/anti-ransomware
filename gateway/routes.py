@@ -60,6 +60,22 @@ class Response:
     def to_dict(self):
         return {k: v for k, v in asdict(self).items() if v is not None}
 
+# default primary is finance1, if it's dead, then finance2...
+def _send_to_primary(endpoint, method="POST", json_data=None):
+    last_error = None
+    for node in FINANCE_NODES:
+        try:
+            url = f"http://{node}:5000{endpoint}"
+            if method == "POST":
+                resp = requests.post(url, json=json_data, timeout=5, auth=krb_auth)
+            else:
+                resp = requests.get(url, timeout=5, auth=krb_auth)
+            return resp
+        except Exception as e:
+            last_error = e
+            continue
+    raise last_error if last_error else Exception("All finance nodes are down")
+
 
 # route to finance1234 node
 @app.route("/finance/read", methods=["POST"])
@@ -144,9 +160,7 @@ def write_op():
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     try:
-        resp = requests.post(
-            "http://client-finance1:5000/write", json=asdict(req), timeout=10, auth=krb_auth
-        )
+        resp = _send_to_primary("/write", method="POST", json_data=asdict(req))
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -189,9 +203,7 @@ def create_op():
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     try:
-        resp = requests.post(
-            "http://client-finance1:5000/create", json=asdict(req), timeout=10, auth=krb_auth
-        )
+        resp = _send_to_primary("/create", method="POST", json_data=asdict(req))
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -270,9 +282,7 @@ def delete_op():
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
     try:
-        resp = requests.post(
-            "http://client-finance1:5000/delete", json=asdict(req), timeout=10, auth=krb_auth
-        )
+        resp = _send_to_primary("/delete", method="POST", json_data=asdict(req))
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -293,7 +303,7 @@ def attack_op():
         description: Internal server error
     """
     try:
-        resp = requests.get("http://client-finance1:5000/attack", timeout=5, auth=krb_auth)
+        resp = _send_to_primary("/attack", method="GET")
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
