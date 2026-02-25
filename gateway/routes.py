@@ -5,6 +5,10 @@ import random
 from flasgger import Swagger
 from dataclasses import dataclass, asdict
 from typing import Optional
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger import Logger
+
 
 # whether gateway uses kerberos key depends on
 # `whether lib requests_gssapi is installed`
@@ -60,22 +64,53 @@ class Response:
     def to_dict(self):
         return {k: v for k, v in asdict(self).items() if v is not None}
 
-# default primary is finance1, if it's dead, then finance2...
+# remember who's the primary, default finance1
+CURRENT_PRIMARY = FINANCE_NODES[0]
+
 def _send_to_primary(endpoint, method="POST", json_data=None):
-    last_error = None
+    global CURRENT_PRIMARY
+    
+    try:
+        url = f"http://{CURRENT_PRIMARY}:5000{endpoint}"
+        
+        if method == "POST":
+            resp = requests.post(url, json=json_data, timeout=3, auth=krb_auth)
+        else:
+            resp = requests.get(url, timeout=3, auth=krb_auth)
+        
+        # if primary is alive
+        if resp.status_code < 500:
+            return resp
+        
+        # 500: primary internal error, maybe ransomware
+        raise Exception(f"Primary {CURRENT_PRIMARY} returned {resp.status_code}")
+    except Exception as e:
+        Logger.error(f"Current primary node {CURRENT_PRIMARY} is down: {e}")        
+    
+    # current primary dead, find next primary node
     for node in FINANCE_NODES:
+        if node == CURRENT_PRIMARY:
+            continue # it's already dead
+            
         try:
             url = f"http://{node}:5000{endpoint}"
+            
             if method == "POST":
-                resp = requests.post(url, json=json_data, timeout=5, auth=krb_auth)
+                resp = requests.post(url, json=json_data, timeout=3, auth=krb_auth)
             else:
-                resp = requests.get(url, timeout=5, auth=krb_auth)
-            return resp
-        except Exception as e:
-            last_error = e
+                resp = requests.get(url, timeout=3, auth=krb_auth)
+            
+            # designate this one as new primary
+            if resp.status_code < 500:
+                CURRENT_PRIMARY = node
+                Logger.done(f"Election success, new primary is {CURRENT_PRIMARY}")
+                return resp
+                
+        except Exception:
             continue
-    raise last_error if last_error else Exception("All finance nodes are down")
-
+    
+    # no one alive
+    raise Exception("All finance nodes are down!")
 
 # route to finance1234 node
 @app.route("/finance/read", methods=["POST"])
