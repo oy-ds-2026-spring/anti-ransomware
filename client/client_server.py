@@ -24,10 +24,10 @@ if __name__ == "__main__":
             try:
                 # (cmd) `kinit`: register and get auth ticket from KDC, keytab_file as the id card.
                 subprocess.run(["kinit", "-kt", keytab_file, config.CLIENT_ID], check=True)
-                Logger.done("Kerberos ticket initialized.")
+                Logger.done("🔑 Kerberos ticket initialized.")
                 break
             except Exception as e:
-                Logger.warning(f"Kerberos init failed: {e}")
+                Logger.warning(f"🔑 Kerberos init failed: {e}")
         time.sleep(2)
 
     # start listening to mq and rpc calls ################################

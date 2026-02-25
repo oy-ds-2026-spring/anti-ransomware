@@ -19,10 +19,10 @@ if __name__ == "__main__":
         if os.path.exists(keytab_file):
             try:
                 subprocess.run(["kinit", "-kt", keytab_file, "gateway"], check=True)
-                Logger.done("Kerberos initialized.")
+                Logger.done("🔑 Kerberos initialized.")
                 break
             except Exception as e:
-                Logger.warning(f"Warning: Kerberos init failed: {e}")
+                Logger.warning(f"Warning: 🔑 Kerberos init failed: {e}")
         time.sleep(2)
 
     threading.Thread(target=snapshot_listener, daemon=True).start()
