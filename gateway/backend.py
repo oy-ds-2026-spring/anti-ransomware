@@ -48,6 +48,38 @@ class Response:
 
     def to_dict(self):
         return {k: v for k, v in asdict(self).items() if v is not None}
+      
+
+# random router with error transfer
+def forward_with_retry(endpoint, method="POST", json_data=None, timeout=3, max_retries=3):
+  # randomly select node for request
+  # if selected node does not respond, switch to next node and retry
+    nodes = list(FINANCE_NODES)
+    random.shuffle(nodes)
+    last_err = None
+
+    for i in range(min(max_retries, len(nodes))):
+        target = nodes[i]
+        url = f"http://{target}:5000/{endpoint}"
+        try:
+            if method == "POST":
+                resp = requests.post(url, json=json_data, timeout=timeout)
+            else:
+                resp = requests.get(url, timeout=timeout)
+                
+            # consider request is success if its not 5xx code
+            if resp.status_code < 500:
+                return jsonify(resp.json()), resp.status_code
+            else:
+                last_err = f"HTTP {resp.status_code}: {resp.text}"
+                print(f"[Gateway] Node {target} returned 500. Retrying...")
+        except Exception as e:
+            last_err = str(e)
+            print(f"[Gateway] Node {target} unreachable ({last_err}). Retrying...")
+            continue # sh1t happens, switch to another node
+
+    # return error when sh1t really happens
+    return jsonify(Response(error=f"All {max_retries} retries failed. Last error: {last_err}").to_dict()), 503
 
 
 # route to finance1234 node
@@ -130,11 +162,14 @@ def write_op():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
-    try:
-        resp = requests.post("http://client-finance1:5000/write", json=asdict(req), timeout=10)
-        return jsonify(resp.json()), resp.status_code
-    except Exception as e:
-        return jsonify(Response(error=str(e)).to_dict()), 500
+    # try:
+    #     resp = requests.post("http://client-finance1:5000/write", json=asdict(req), timeout=10)
+    #     return jsonify(resp.json()), resp.status_code
+    # except Exception as e:
+    #     return jsonify(Response(error=str(e)).to_dict()), 500
+    
+    # try random node write
+    return forward_with_retry("write", json_data=asdict(req))
 
 
 # route to finance1 node(primary)
@@ -173,11 +208,14 @@ def create_op():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
-    try:
-        resp = requests.post("http://client-finance1:5000/create", json=asdict(req), timeout=10)
-        return jsonify(resp.json()), resp.status_code
-    except Exception as e:
-        return jsonify(Response(error=str(e)).to_dict()), 500
+    # try:
+    #     resp = requests.post("http://client-finance1:5000/create", json=asdict(req), timeout=10)
+    #     return jsonify(resp.json()), resp.status_code
+    # except Exception as e:
+    #     return jsonify(Response(error=str(e)).to_dict()), 500
+    
+     # try random node write
+    return forward_with_retry("create", json_data=asdict(req))
 
 
 # route to finance1234 node for HTML browsing
@@ -252,11 +290,14 @@ def delete_op():
     except (TypeError, AttributeError):
         return jsonify(Response(error="Invalid request parameters").to_dict()), 400
 
-    try:
-        resp = requests.post("http://client-finance1:5000/delete", json=asdict(req), timeout=10)
-        return jsonify(resp.json()), resp.status_code
-    except Exception as e:
-        return jsonify(Response(error=str(e)).to_dict()), 500
+    # try:
+    #     resp = requests.post("http://client-finance1:5000/delete", json=asdict(req), timeout=10)
+    #     return jsonify(resp.json()), resp.status_code
+    # except Exception as e:
+    #     return jsonify(Response(error=str(e)).to_dict()), 500
+    
+    # try random node write
+    return forward_with_retry("delete", json_data=asdict(req))
 
 
 # route to finance1 node(primary)
@@ -273,8 +314,11 @@ def attack_op():
       500:
         description: Internal server error
     """
+    # try random attack
+    target = random.choice(FINANCE_NODES)
     try:
-        resp = requests.get("http://client-finance1:5000/attack", timeout=5)
+        # resp = requests.get("http://client-finance1:5000/attack", timeout=5)
+        resp = requests.get(f"http://{target}:5000/attack", timeout=5)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
