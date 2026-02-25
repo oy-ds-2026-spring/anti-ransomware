@@ -402,7 +402,7 @@ def write_file(**kwargs):
         # broadcast to others via RabbitMQ # with clock
         rabbitmq_handler.broadcast_sync("WRITE", req.filename, content=req.content, v_clock=current_clock, request_id=req_id)
 
-        _log_and_archive(req.filename, "MODIFY", req_id, req.content)
+        _log_and_archive(req.filename, "WRITE", req_id, req.content)
 
         return jsonify(Response(status="success", content=new_content).to_dict())
     except Exception as e:
