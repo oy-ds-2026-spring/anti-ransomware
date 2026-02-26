@@ -362,8 +362,6 @@ def attack_op():
       500:
         description: Internal server error
     """
-    # try random attack
-    target = random.choice(FINANCE_NODES)
     try:
         resp = _send_to_primary("/attack", method="GET")
         return jsonify(resp.json()), resp.status_code
