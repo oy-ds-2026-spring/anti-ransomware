@@ -8,6 +8,7 @@ import threading
 from client import config
 from client import utils
 from logger import Logger
+from client.utils import is_duplicate_request
 
 # offline outbox
 OFFLINE_QUEUE_FILE = os.path.join(config.MONITOR_DIR, f"offline_{config.CLIENT_ID}.json")
@@ -58,6 +59,11 @@ def flush_offline_queue(channel):
 def _on_sync_message(ch, method, properties, body):
     msg = json.loads(body)
     filename = msg.get("filename")
+
+    if is_duplicate_request(msg.get("request_id")):
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        return
+
     incoming_clock = msg.get("v_clock", {})
 
     # not listen to self
@@ -120,6 +126,7 @@ def _on_sync_message(ch, method, properties, body):
 
 # mq connection
 def _get_channel():
+    # mq weak auth
     credentials = pika.PlainCredentials("guest", "guest")
     connection = pika.BlockingConnection(
         pika.ConnectionParameters(host=config.BROKER_HOST, credentials=credentials)
@@ -203,20 +210,21 @@ def sync_listener():
             channel.basic_consume(
                 queue=queue_name, on_message_callback=_on_sync_message, auto_ack=False
             )
-            Logger.sync("Listener started / Reconnected")
+            Logger.done("File sync listener started / Reconnected")
             channel.start_consuming()
         except Exception as e:
             Logger.warning(f"Sync listener connection lost. Error: {e}")
             time.sleep(5)
 
 
-def broadcast_sync(operation, filename, content="", v_clock=None):
+def broadcast_sync(operation, filename, content="", v_clock=None, request_id=None):
     payload = {
         "sender": config.CLIENT_ID,
         "operation": operation,
         "filename": filename,
         "content": content,
         "v_clock": v_clock or utils.get_clock(filename),
+        "request_id": request_id,
     }
     
     try:
@@ -240,27 +248,31 @@ def broadcast_sync(operation, filename, content="", v_clock=None):
         )
         Logger.sync(f"request for {operation}, {filename}, {content}")
 
-        # starts to count ACK number, `finance_sync_ack`
-        ack_count = 0
+        # ! ACK logic deleted, trust rabbitMQ on this, boost primary client-node efficiency
+        # ! And this means when finance1 is dead, finance2 can continue to lead writing.
 
-        def on_ack(ch, method, props, body):
-            nonlocal ack_count
-            if props.correlation_id == corr_id:
-                ack_count += 1
+        # # starts to count ACK number, `finance_sync_ack`
+        # ack_count = 0
 
-        # starts listening ack
-        channel.basic_consume(
-            queue=callback_queue, on_message_callback=on_ack, auto_ack=True
-        )
+        # def on_ack(ch, method, props, body):
+        #     nonlocal ack_count
+        #     if props.correlation_id == corr_id:
+        #         ack_count += 1
 
-        start_time = time.time()
-        # wait for 3 ACKs (assuming 4 nodes total, 1 sender, 3 receivers)
-        while ack_count < 3 and (time.time() - start_time) <= 10:
-            connection.process_data_events(time_limit=1)
-        if ack_count < 3:
-            Logger.warning(f"Sync timeout. Received {ack_count}/3 ACKs.")
-        else:
-            Logger.done(f"SYNC_OK Received {ack_count} ACKs")
+        # # starts listening ack
+        # channel.basic_consume(
+        #     queue=callback_queue, on_message_callback=on_ack, auto_ack=True
+        # )
+
+        # start_time = time.time()
+        # # wait for 3 ACKs (assuming 4 nodes total, 1 sender, 3 receivers)
+        # while ack_count < 3 and (time.time() - start_time) <= 10:
+        #     connection.process_data_events(time_limit=1)
+        # if ack_count < 3:
+        #     Logger.warning(f"Sync timeout. Received {ack_count}/3 ACKs.")
+        # else:
+        #     Logger.done(f"SYNC_OK Received {ack_count} ACKs")
+
         connection.close()
     except Exception as e:
         Logger.error(f"Cannot reach RabbitMQ: {e}")

@@ -4,7 +4,30 @@ import random
 from collections import Counter
 
 from client import config
+from client.config import DEDUP_LIMIT,DEDUP_SEEN,DEDUP_QUEUE,DEDUP_LOCK
 from logger import Logger
+
+
+def is_duplicate_request(req_id):
+    """
+    avoid `double-write` scenario using a global UUID:
+
+    when leader-finance1's term ends and leader-finance2 becomes the leader
+    finance1 is not actually dead, it's still processing the operation
+    finance2 got the same request from gateway and in the end, double write.
+    """
+    
+    if not req_id:
+        return False
+    with DEDUP_LOCK:
+        if req_id in DEDUP_SEEN:
+            return True
+        DEDUP_SEEN.add(req_id)
+        DEDUP_QUEUE.append(req_id)
+        if len(DEDUP_QUEUE) > DEDUP_LIMIT:
+            old = DEDUP_QUEUE.popleft()
+            DEDUP_SEEN.discard(old)
+        return False
 
 
 def calculate_entropy(data):
