@@ -118,7 +118,12 @@ def health_check(all_ready: bool, results: dict, type: Optional[str] = "prepare"
         for n, r in results.items():
             tag = "OK" if r.get("ok") else "FAIL"
             print(f"[{tag}] {n} status={r.get('status')} data={r.get('data')}")
-            return False
+
+        return False
+
+    else:
+        Logger.warning("[WARN] Unrecognized type")
+        return None
 
 
 def send_snapshot(command_id: str, timeout: float = 10.0):
@@ -162,17 +167,22 @@ def send_snapshot(command_id: str, timeout: float = 10.0):
         return node, False, status, None
 
 def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0):
-    all_ready, results = prepare_all_parallel(command_id)
+    node, ok, status_code, data = send_request(
+        node="detection-service",
+        command_id=command_id,
+        # TODO: Api in detection
+        api="/checkhealth",
+    )
 
-    up_node, healthy = health_check(all_ready, results)
+    unhealthy_nodes = data.get("unhealthy_nodes")
 
-    if up_node is None:
-        return False, None, {"error": "All nodes unreachable"}
+    if unhealthy_nodes is None:
+        return False, None, {"error": "All nodes are in healthy state"}
 
     try:
         successful_nodes = []
         err_msg = {}
-        for up_node in healthy:
+        for up_node in unhealthy_nodes:
             node, ok, status, data = send_request(
                 node=up_node,
                 command_id=command_id,

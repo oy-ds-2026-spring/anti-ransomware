@@ -1,13 +1,14 @@
-import os
-# import stat
-import time
-# import multiprocessing
-import threading
 import base64
 import csv
+import os
+# import multiprocessing
+import threading
+# import stat
+import time
+
 import requests
-from flask import Flask, jsonify, request
 from flasgger import Swagger
+from flask import Flask, jsonify, request
 
 # import python lib for kerberos
 # whether kerberos auth is on depends on `whether flask_gssapi is installed`
@@ -27,7 +28,7 @@ from client import utils
 from client.models import ReadReq, WriteReq, CreateReq, DeleteReq, Response
 from client import rabbitmq_handler
 from client.security import execute_unlock
-from client.snapshot import take_snapshot, start_snapshot
+from client.snapshot import start_snapshot, start_restore
 from logger import Logger
 from client.utils import is_duplicate_request
 
@@ -235,8 +236,12 @@ def snapshot_commit():
 
 @app.route("/snapshot/recover", methods=["POST"])
 def snapshot_recover():
-    # TODO: pull snapshots from repo and recover
-    return jsonify({"status": "successful"}), 200
+
+    ok, message =  start_restore(snapshot_id=request.args.get("snapshot_id"))
+    if ok:
+        return jsonify({"status": "successful"}), 200
+    else:
+        return jsonify({"status": "error", "message": message}), 500
 
 
 @app.route("/snapshot/data", methods=["GET"])
