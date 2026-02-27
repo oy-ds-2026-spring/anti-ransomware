@@ -22,7 +22,7 @@ def snapshot_loop(connection: pika.BlockingConnection, queue):
     print(f"[{time.strftime('%H:%M:%S')}] [SNAPSHOT] starting")
 
     while True:
-        time.sleep(10)
+        time.sleep(20)
 
         command_id = str(uuid.uuid4())
 

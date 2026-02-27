@@ -1,11 +1,7 @@
-import json
 import os
-import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
-import pika
 import requests
 
 from logger import Logger
@@ -90,7 +86,7 @@ def health_check(all_ready: bool, results: dict, type: Optional[str] = "prepare"
 
     node, ok, status_code, data = send_request(
         node="detection-service",
-        api="/health",
+        api="health",
         type="get",
         port=4020
     )
@@ -106,43 +102,45 @@ def health_check(all_ready: bool, results: dict, type: Optional[str] = "prepare"
     if type == "prepare":
         healthy = [n for n, r in results.items() if r.get("ok")]
         if not healthy:
-            print("[ERROR] All nodes unreachable")
+            Logger.error("[GATEWAY] All nodes unreachable")
             return None, None
 
         bad = set(unhealthy_nodes)
         healthy = [x for x in healthy if x not in bad]
 
+        Logger.info(f"[GATEWAY] Healthy nodes are: {healthy}")
+
         if len(healthy) == 0:
-            Logger.warning("[WARN] No nodes healthy")
+            Logger.warning("[GATEWAY] No nodes healthy")
             return None, None
 
         preferred = "client-finance1"
         up_node = preferred if preferred in healthy  else healthy[0]
 
         if all_ready:
-            print("[INFO] ALL READY =", all_ready)
+            Logger.info(f"[GATEWAY] ALL RESUMED = {all_ready}")
         else:
-            print("[WARN] Failure in nodes detected")
+            Logger.warning("[GATEWAY] Failure in nodes detected")
             for n, r in results.items():
                 tag = "OK" if r.get("ok") else "FAIL"
                 print(f"[{tag}] {n} status={r.get('status')} data={r.get('data')}")
 
-        print(f"[INFO] Picked node: {up_node}")
+        Logger.info(f"[GATEWAY] Picked node: {up_node}")
 
         return up_node, healthy
 
     elif type == "commit":
 
         if all_ready:
-            print("[INFO] ALL RESUMED =", all_ready)
+            Logger.info(f"[GATEWAY] ALL RESUMED = {all_ready}")
             return all_ready
 
         healthy = [n for n, r in results.items() if r.get("ok")]
         if not healthy:
-            print("[ERROR] All nodes unreachable")
+            Logger.error("[GATEWAY] All nodes unreachable")
             return False
 
-        print("[WARN] Failure in nodes detected")
+        Logger.warning("[GATEWAY] Failure in nodes detected")
         for n, r in results.items():
             tag = "OK" if r.get("ok") else "FAIL"
             print(f"[{tag}] {n} status={r.get('status')} data={r.get('data')}")

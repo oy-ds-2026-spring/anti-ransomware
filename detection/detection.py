@@ -330,6 +330,8 @@ def msg_callback(ch, method, properties, body):
 def main():
     Logger.info("Detection Service Starting...")
 
+    threading.Thread(target=run_health_api, daemon=True).start()
+
     # 1. connect to rabbitmq
     connection = None
     while connection is None:

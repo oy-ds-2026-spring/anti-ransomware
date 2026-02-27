@@ -1,10 +1,9 @@
-import threading
 import subprocess
+import threading
 import time
-import os
-import sys
-from rabbitmq_handler import snapshot_listener, recovery_listener
-from routes import *
+
+from gateway.rabbitmq_handler import snapshot_listener, recovery_listener
+from gateway.routes import *
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import Logger

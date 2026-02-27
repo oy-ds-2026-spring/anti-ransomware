@@ -303,7 +303,7 @@ services:
   finance-gateway:
     build: .
     container_name: finance-gateway
-    command: python ./gateway/gateway.py
+    command: python -m gateway.gateway_server
     ports:
       - "9000:9000" # gateway swagger
     environment:
@@ -317,6 +317,10 @@ services:
     depends_on:
       kdc-server:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      detection-service:
+        condition: service_started
     networks:
       - ransom_net
 
@@ -345,6 +349,7 @@ services:
 
 networks:
   ransom_net:
+    name: ransom_net
     driver: bridge
 
 # run-time shared folder
