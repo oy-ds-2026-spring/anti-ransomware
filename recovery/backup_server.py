@@ -2,8 +2,6 @@ import os
 import threading
 import time
 
-import pika
-
 from recovery.database import SnapshotDB
 from recovery.scheduler import snapshot_loop
 from recovery.message_bus.rabbitmq_handler import start_connection, snapshot_results_listener
@@ -11,6 +9,7 @@ from recovery.message_bus.rabbitmq_handler import start_connection, snapshot_res
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 QUEUE = os.getenv("QUEUE", "regular_snapshot")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
+RECOVERY_QUEUE = os.getenv("RECOVERY_QUEUE", "recovery_queue")
 
 def main():
     print("[INFO] Backup Service Starting...")

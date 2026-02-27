@@ -1,7 +1,8 @@
-import uuid
 from typing import Optional
 
-import pika, time, os, json
+import json
+import pika
+import time
 
 from logger import Logger
 from recovery.database import SnapshotDB
@@ -11,7 +12,7 @@ def start_connection(username, password, host):
     connection = None
     while connection is None:
         try:
-            credentials = pika.PlainCredentials("guest", "guest")
+            credentials = pika.PlainCredentials(username, password)
             connection = pika.BlockingConnection(
                 pika.ConnectionParameters(host=host, credentials=credentials)
             )
@@ -52,27 +53,27 @@ def snapshot_results_listener(connection: pika.BlockingConnection, queue: str, d
     ch.start_consuming()
 
 
-def recovery_listener(connection: pika.BlockingConnection, queue: str, db: SnapshotDB):
-    ch = connection.channel()
-
-    def on_msg(ch, method, props, body: bytes):
-        msg = json.loads(body)
-
-        if msg.get("type") == "RESTORE_REQUEST":
-            command_id = msg.get("command_id")
-            Logger.info(f"[BACKUP] Got message: {msg.get('type')}")
-
-            _, client_id, restic_snapshot_id, created_ts = db.get_latest_success_snapshot(require_snapshot_id=True)
-            Logger.info(f"[BACKUP] The latest clean snapshot is: {restic_snapshot_id}")
-
-            publish_request(connection, queue, command_id, restic_snapshot_id, type="recover")
-
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-
-    ch.basic_consume(queue=queue, on_message_callback=on_msg, auto_ack=False)
-
-    print("listening on", queue)
-    ch.start_consuming()
+# def recovery_listener(connection: pika.BlockingConnection, queue: str, db: SnapshotDB):
+#     ch = connection.channel()
+#
+#     def on_msg(ch, method, props, body: bytes):
+#         msg = json.loads(body)
+#
+#         if msg.get("type") == "RESTORE_REQUEST":
+#             command_id = msg.get("command_id")
+#             Logger.info(f"[BACKUP] Got message: {msg.get('type')}")
+#
+#             _, client_id, restic_snapshot_id, created_ts = db.get_latest_success_snapshot(require_snapshot_id=True)
+#             Logger.info(f"[BACKUP] The latest clean snapshot is: {restic_snapshot_id}")
+#
+#             publish_request(connection, queue, command_id, restic_snapshot_id, type="recover")
+#
+#         ch.basic_ack(delivery_tag=method.delivery_tag)
+#
+#     ch.basic_consume(queue=queue, on_message_callback=on_msg, auto_ack=False)
+#
+#     print("listening on", queue)
+#     ch.start_consuming()
 
 
 def publish_request(

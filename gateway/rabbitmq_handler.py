@@ -14,6 +14,7 @@ MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
 CLIENT_ID = os.getenv("CLIENT_ID", "gateway")
 QUEUE = os.getenv("SNAPSHOT_QUEUE", "regular_snapshot")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
+RECOVERY_QUEUE = os.getenv("RECOVERY_QUEUE", "recovery_queue")
 
 def start_connection(username, password):
     connection = None
@@ -80,18 +81,6 @@ def snapshot_listener():
                             error=str(result),
                             type="regular",
                         )
-            elif msg.get("type") == "RESTORE_REQUEST":
-                clean_snapshot_id = msg.get("snapshot_id")
-                command_id = msg.get("command_id")
-                ok, successful_nodes, message = send_recovery(command_id, clean_snapshot_id)
-                publish_result(
-                    ch,
-                    client_id=successful_nodes,
-                    command_id=command_id,
-                    ok = ok,
-                    error = message,
-                    type="recover"
-                )
             else:
                 print(f"[INFO] ignore msg type={msg.get('type')}")
         except Exception as e:
@@ -110,6 +99,54 @@ def snapshot_listener():
     ch.basic_consume(queue=QUEUE, on_message_callback=on_msg, auto_ack=False)
     print("listening on", QUEUE)
     ch.start_consuming()
+
+def recovery_listener():
+    connection = start_connection("guest", "guest")
+
+    ch = connection.channel()
+
+    ch.queue_declare(queue=RECOVERY_QUEUE, durable=True)
+
+    def on_msg(ch, method, props, body: bytes):
+        try:
+            msg = json.loads(body.decode("utf-8"))
+        except Exception as e:
+            print(f"[WARN] bad json message: {e}, body={body[:200]!r}")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+
+        try:
+            if msg.get("type") == "RESTORE_REQUEST":
+                clean_snapshot_id = msg.get("snapshot_id")
+                command_id = msg.get("command_id")
+                ok, successful_nodes, message = send_recovery(command_id, clean_snapshot_id)
+                publish_result(
+                    ch,
+                    client_id=successful_nodes,
+                    command_id=command_id,
+                    ok=ok,
+                    error=message,
+                    type="recover"
+                )
+            else:
+                print(f"[INFO] ignore msg type={msg.get('type')}")
+        except Exception as e:
+            print(f"[ERROR] handler exception: {e}")
+            publish_result(
+                ch,
+                client_id="unknown",
+                restic_snapshot_id=None,
+                command_id=msg.get("command_id"),
+                ok=False,
+                error=f"handler exception: {e}",
+            )
+        finally:
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    ch.basic_consume(queue=RECOVERY_QUEUE, on_message_callback=on_msg, auto_ack=False)
+    print("listening on", RECOVERY_QUEUE)
+    ch.start_consuming()
+
 
 def publish_result(
         channel,
