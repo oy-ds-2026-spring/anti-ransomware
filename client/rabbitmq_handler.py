@@ -59,12 +59,17 @@ def flush_offline_queue(channel):
 def _on_sync_message(ch, method, properties, body):
     msg = json.loads(body)
     filename = msg.get("filename")
+    
+    # health check
+    # if node is not healthy, discard the msg
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        Logger.warning(f"[HEALTH] Node locked down. Discarding sync msg for {filename}. Awaiting recovery log.")
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        return
 
     if is_duplicate_request(msg.get("request_id")):
         ch.basic_ack(delivery_tag=method.delivery_tag)
         return
-
-    incoming_clock = msg.get("v_clock", {})
 
     # not listen to self
     if msg.get("sender") == config.CLIENT_ID:

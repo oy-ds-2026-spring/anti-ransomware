@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 from typing import Optional
 import pika
 
-from gateway.snapshot import send_recovery
-from snapshot import send_snapshot
+# from gateway.snapshot import send_recovery
+# from snapshot import send_snapshot
+from snapshot import send_recovery, send_snapshot
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
