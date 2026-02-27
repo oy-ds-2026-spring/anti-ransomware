@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from recovery.message_bus.http_handler import app
 
 from recovery.database import SnapshotDB
 from recovery.scheduler import snapshot_loop
@@ -24,6 +25,9 @@ def main():
         daemon=True
     )
     t.start()
+
+    f = threading.Thread(target=app.run, daemon=True)
+    f.start()
 
     conn2 = start_connection("guest", "guest", host=BROKER_HOST)
     # start snapshot schedule
