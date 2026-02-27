@@ -29,5 +29,3 @@ def archive():
         return jsonify({"status": "archived"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-bad = set(unhealthy_nodes)
-healthy = [x for x in healthy if x not in bad]
