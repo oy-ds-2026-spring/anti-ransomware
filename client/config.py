@@ -18,6 +18,8 @@ VECTOR_CLOCK = {CLIENT_ID: 0}
 CLOCK_LOCK = threading.Lock()
 
 IS_LOCKED_DOWN = False
+IS_RECOVERING = False
+
 WRITE_PERMISSION = threading.Event()
 WRITE_PERMISSION.set()  # initially allowed
 
