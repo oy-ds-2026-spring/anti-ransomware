@@ -15,7 +15,7 @@ ENV PYTHONUNBUFFERED=1 \
   CLIENT_ID=unknown-client \
   TZ=Europe/Helsinki
 # install system dependency
-RUN apt-get update && apt-get install -y restic procps tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y restic procps tzdata krb5-user libkrb5-dev gcc && rm -rf /var/lib/apt/lists/*
 
 # explicitly copy to the container: /app/requirements.txt
 COPY requirements.txt .

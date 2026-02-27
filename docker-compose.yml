@@ -19,30 +19,45 @@ services:
       retries: 5
 
   # Zookeeper (for Kafka)
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
-    container_name: zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    networks:
-      - ransom_net
+  # zookeeper:
+  #   image: confluentinc/cp-zookeeper:7.4.0
+  #   container_name: zookeeper
+  #   environment:
+  #     ZOOKEEPER_CLIENT_PORT: 2181
+  #     ZOOKEEPER_TICK_TIME: 2000
+  #   networks:
+  #     - ransom_net
 
   # Kafka
-  kafka:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: kafka
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  # kafka:
+  #   image: confluentinc/cp-kafka:7.4.0
+  #   container_name: kafka
+  #   depends_on:
+  #     - zookeeper
+  #   ports:
+  #     - "9092:9092"
+  #   environment:
+  #     KAFKA_BROKER_ID: 1
+  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  #   networks:
+  #     - ransom_net
+
+  # Kerberos KDC Server
+  kdc-server:
+    build: ./kerberos
+    container_name: kdc-server
+    hostname: kdc-server
+    volumes:
+      - keytabs:/keytabs
     networks:
       - ransom_net
+    healthcheck:
+      test: ["CMD", "bash", "-c", "cat < /dev/null > /dev/tcp/localhost/88"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # detection service
   detection-service:
@@ -76,8 +91,16 @@ services:
     build: .
     container_name: backup-storage
     command: python -m recovery.backup_server
+    environment:
+      - KRB5_CONFIG=/etc/krb5.conf
+      - KRB5_KTNAME=/keytabs/backup-storage.keytab
     volumes:
       - ./recovery/backup:/data
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - keytabs:/keytabs:ro
+    depends_on:
+      kdc-server:
+        condition: service_healthy
     networks:
       - ransom_net
 
@@ -106,15 +129,21 @@ services:
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance4:4321
       - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
+      - KRB5_CONFIG=/etc/krb5.conf
+      - KRB5_KTNAME=/keytabs/finance1.keytab
     volumes:
       - .:/app
       - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance1:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - keytabs:/keytabs:ro
     depends_on:
       rabbitmq:
         condition: service_healthy
       rest-server:
+        condition: service_healthy
+      kdc-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -141,15 +170,21 @@ services:
       - PEERS=client-finance1:4321,client-finance3:4321,client-finance4:4321
       - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
+      - KRB5_CONFIG=/etc/krb5.conf
+      - KRB5_KTNAME=/keytabs/finance2.keytab
     volumes:
       - .:/app
       - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance2:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - keytabs:/keytabs:ro
     depends_on:
       rabbitmq:
         condition: service_healthy
       rest-server:
+        condition: service_healthy
+      kdc-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -176,15 +211,21 @@ services:
       - PEERS=client-finance1:4321,client-finance2:4321,client-finance4:4321
       - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
+      - KRB5_CONFIG=/etc/krb5.conf
+      - KRB5_KTNAME=/keytabs/finance3.keytab
     volumes:
       - .:/app
       - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance3:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - keytabs:/keytabs:ro
     depends_on:
       rabbitmq:
         condition: service_healthy
       rest-server:
+        condition: service_healthy
+      kdc-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -211,15 +252,21 @@ services:
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance1:4321
       - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
+      - KRB5_CONFIG=/etc/krb5.conf
+      - KRB5_KTNAME=/keytabs/finance4.keytab
     volumes:
       - .:/app
       - ./secrets/restic_repo_pass_finance:/run/secrets/restic_repo_pass:ro
       - ./simulation_data/finance4:/data:delegated # Mount simulated data
       - ./shared_logs:/logs  
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - keytabs:/keytabs:ro
     depends_on:
       rabbitmq:
         condition: service_healthy
       rest-server:
+        condition: service_healthy
+      kdc-server:
         condition: service_healthy
     networks:
       - ransom_net
@@ -259,8 +306,15 @@ services:
       - "9000:9000" # gateway swagger
     environment:
       - STORAGE_NODES=client-finance1,client-finance2,client-finance3,client-finance4
+      - KRB5_CONFIG=/etc/krb5.conf
+      - KRB5_KTNAME=/keytabs/gateway.keytab
     volumes:
       - .:/app
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - keytabs:/keytabs:ro
+    depends_on:
+      kdc-server:
+        condition: service_healthy
     networks:
       - ransom_net
 
@@ -290,3 +344,7 @@ services:
 networks:
   ransom_net:
     driver: bridge
+
+# run-time shared folder
+volumes:
+  keytabs:
