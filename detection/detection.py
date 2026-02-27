@@ -4,6 +4,8 @@ import os
 import time
 import sys
 import grpc
+import threading
+from flask import Flask, jsonify
 
 from common import lockdown_pb2
 from common import lockdown_pb2_grpc
@@ -29,6 +31,31 @@ current_state = {
     "processing_logs": [],
     "issued_commands": [],
 }
+# --- NEW: Dedicated Health Registry
+client_health = {
+    "finance1": {"health_status": "Safe", "last_entropy": 0.0},
+    "finance2": {"health_status": "Safe", "last_entropy": 0.0},
+    "finance3": {"health_status": "Safe", "last_entropy": 0.0},
+    "finance4": {"health_status": "Safe", "last_entropy": 0.0},
+}
+
+app = Flask(__name__)
+
+@app.route("/health", methods=["GET"])
+def get_cluster_health():
+    """Endpoint for Gateway or Recovery node to ask for cluster status"""
+    return jsonify(client_health), 200
+
+def run_health_api():
+    app.run(host="0.0.0.0", port=4020, debug=True, use_reloader=False)
+
+# Helper function to update the registry cleanly
+def update_health_registry(client_id, status=None, entropy=None):
+    if client_id in client_health:
+        if status is not None:
+            client_health[client_id]["health_status"] = status
+        if entropy is not None:
+            client_health[client_id]["last_entropy"] = entropy
 
 # --- Detection Profiles ---
 client_profiles = {}
@@ -204,6 +231,7 @@ def handle_malware(ch, client_id, file_path, entropy):
     Logger.ransomware(alert_msg)
 
     log_client_status(client_id, "Infected", entropy, alert_msg)
+    update_health_registry(client_id, status="Infected", entropy=entropy)
 
     # send lock down command
     timestamp = time.strftime("%H:%M:%S")
@@ -236,10 +264,12 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
         profile["state"] = "Suspicious"
         log_client_status(client_id, "Suspicious", entropy,
                           "Abnormal behaviour detected")
+        update_health_registry(client_id, status="Suspicious", entropy=entropy)
     else:
         profile["state"] = "Safe"
         log_client_status(client_id, "Safe", entropy,
                           f"Normal activity: {os.path.basename(file_path)}")
+        update_health_registry(client_id, status="Safe", entropy=entropy)
 
 
 # msg process

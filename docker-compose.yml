@@ -64,6 +64,8 @@ services:
     build: .
     container_name: detection-service
     command: python -m detection.detection
+    ports:
+      - "4020:4020"
     volumes:
       - .:/app  # mount current source code; changes take effect after restart
       - ./shared_logs:/logs
