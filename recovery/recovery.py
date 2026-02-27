@@ -20,7 +20,7 @@ def archive():
     try:
         file_exists = os.path.exists(FILE_OPERATION_LOG)
         # Ensure fieldnames match the data sent by client
-        fieldnames = ["timestamp", "client_id", "filename", "operation", "appended"]
+        fieldnames = ["uuid", "timestamp", "client_id", "filename", "operation", "appended"]
 
         with open(FILE_OPERATION_LOG, "a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -35,4 +35,4 @@ def archive():
 
 if __name__ == "__main__":
     print("recovery listening")
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    app.run(host="0.0.0.0", port=8080)

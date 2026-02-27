@@ -98,4 +98,4 @@ if __name__ == "__main__":
     log.setLevel(logging.ERROR)
 
     print("🌐 Dashboard starting on port 8501...")
-    app.run(host="0.0.0.0", port=8501, debug=True)
+    app.run(host="0.0.0.0", port=8501)
