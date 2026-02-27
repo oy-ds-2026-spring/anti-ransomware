@@ -8,6 +8,8 @@ from typing import Optional
 import pika
 import requests
 
+from logger import Logger
+
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 EXCHANGE = os.getenv("EXCHANGE", "regular_snapshot")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
@@ -22,10 +24,24 @@ FINANCE_NODES = [
 REQUIRED = {"finance1", "finance2", "finance3", "finance4"}
 
 
-def send_request(node: str, command_id: str, timeout: float = 2.0, api: str = ""):
+def send_request(node: str, command_id: str, timeout: float = 2.0, api: str = "", clean_snapshot_id: Optional[str] = None):
     url = f"http://{node}:5000/{api}"
     try:
-        resp = requests.post(url, json={"command_id": command_id}, timeout=timeout)
+        if clean_snapshot_id:
+            resp = requests.post(
+                url,
+                json={
+                    "command_id": command_id,
+                    "clean_snapshot_id": clean_snapshot_id
+                },
+                timeout=timeout
+            )
+        else:
+            resp = requests.post(
+                url,
+                json={"command_id": command_id},
+                timeout=timeout
+            )
         ok = (resp.status_code == 200)
 
         try:
@@ -85,7 +101,7 @@ def health_check(all_ready: bool, results: dict, type: Optional[str] = "prepare"
 
         print(f"[INFO] Picked node: {up_node}")
 
-        return up_node
+        return up_node, healthy
 
     elif type == "commit":
 
@@ -112,7 +128,7 @@ def send_snapshot(command_id: str, timeout: float = 10.0):
     """
     all_ready, results = prepare_all_parallel(command_id)
 
-    up_node = health_check(all_ready, results)
+    up_node, healthy = health_check(all_ready, results)
 
     if up_node is None:
         return None, False, None, {"error": "All nodes unreachable"}
@@ -145,4 +161,31 @@ def send_snapshot(command_id: str, timeout: float = 10.0):
         print("[FAIL] SNAPSHOT FAILED")
         return node, False, status, None
 
+def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0):
+    all_ready, results = prepare_all_parallel(command_id)
 
+    up_node, healthy = health_check(all_ready, results)
+
+    if up_node is None:
+        return False, None, {"error": "All nodes unreachable"}
+
+    try:
+        successful_nodes = []
+        err_msg = {}
+        for up_node in healthy:
+            node, ok, status, data = send_request(
+                node=up_node,
+                command_id=command_id,
+                timeout=timeout,
+                api="snapshot/recover",
+            )
+            if ok:
+                Logger.info(f"[GATEWAY] Snapshot recovered successfully on node {node}. Recovered snapshot id: {clean_snapshot_id}")
+                successful_nodes.append(node)
+            else:
+                Logger.warning(f"[GATEWAY] Snapshot recovered failed on node {node}")
+                err_msg[node] = data
+        return True, successful_nodes, {'error': err_msg}
+    except Exception as e:
+        Logger.error(f"[ERROR] send_request exception: {e}")
+        return False, None, {'error': str(e)}

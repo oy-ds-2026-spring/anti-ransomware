@@ -233,6 +233,11 @@ def snapshot_commit():
     config.WRITE_PERMISSION.set()
     return jsonify({"status": "resumed"}), 200
 
+@app.route("/snapshot/recover", methods=["POST"])
+def snapshot_recover():
+    # TODO: pull snapshots from repo and recover
+    return jsonify({"status": "successful"}), 200
+
 
 @app.route("/snapshot/data", methods=["GET"])
 def snapshot_data():
