@@ -103,10 +103,10 @@ services:
       - ./kerberos/krb5.conf:/etc/krb5.conf:ro
       - keytabs:/keytabs:ro
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       kdc-server:
         condition: service_healthy
-    expose:
-      - "50051"
     networks:
       - ransom_net
 

@@ -9,8 +9,6 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rabbitmq_handler import snapshot_listener, recovery_listener
-from routes import *
 from logger import Logger
 
 
