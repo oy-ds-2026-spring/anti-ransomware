@@ -4,6 +4,8 @@ import json
 import uuid
 import os
 import threading
+import requests
+import csv
 
 from client import config
 from client import utils
@@ -59,12 +61,17 @@ def flush_offline_queue(channel):
 def _on_sync_message(ch, method, properties, body):
     msg = json.loads(body)
     filename = msg.get("filename")
+    
+    # health check
+    # if node is not healthy, discard the msg OR in recovering
+    if getattr(config, "IS_LOCKED_DOWN", False) or getattr(config, "IS_RECOVERING", False):
+        Logger.warning(f"[HEALTH] Node locked down. Discarding sync msg for {filename}. Awaiting recovery log.")
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        return
 
     if is_duplicate_request(msg.get("request_id")):
         ch.basic_ack(delivery_tag=method.delivery_tag)
         return
-
-    incoming_clock = msg.get("v_clock", {})
 
     # not listen to self
     if msg.get("sender") == config.CLIENT_ID:
@@ -215,66 +222,175 @@ def sync_listener():
         except Exception as e:
             Logger.warning(f"Sync listener connection lost. Error: {e}")
             time.sleep(5)
+            
+
+def _async_ack_and_log(operation, filename, content, v_clock, request_id):
+    # backend thread: send broadcast -> request healthy status -> collect ack -> log
+    try:
+        # get all health nodes
+        healthy_peers = set()
+        try:
+            resp = requests.get("http://detection-service:4020/health", timeout=2)
+            if resp.status_code == 200:
+                health_data = resp.json()
+                for node, status_info in health_data.items():
+                    # exclude self
+                    if status_info.get("health_status") == "Safe" and node != config.CLIENT_ID:
+                        healthy_peers.add(node)
+        except Exception as e:
+            Logger.warning(f"Could not fetch health status: {e}")
+
+        # continue to log if no healthy nodes
+        if not healthy_peers:
+            Logger.warning("No other healthy peers available. Skipping ACK wait.")
+        else:
+            # broadcast
+            connection, channel = _get_channel()
+            channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
+            channel.exchange_declare(exchange="finance_sync_ack", exchange_type="direct")
+            callback_queue = channel.queue_declare(queue="", exclusive=True).method.queue
+            
+            channel.queue_bind(exchange="finance_sync_ack", queue=callback_queue, routing_key=config.CLIENT_ID)
+            
+            corr_id = str(uuid.uuid4())
+            payload = {
+                "sender": config.CLIENT_ID, "operation": operation, "filename": filename,
+                "content": content, "v_clock": v_clock, "request_id": request_id,
+            }
+
+            channel.basic_publish(
+                exchange="finance_sync", routing_key="",
+                properties=pika.BasicProperties(reply_to=callback_queue, correlation_id=corr_id),
+                body=json.dumps(payload),
+            )
+            Logger.sync(f"Broadcast sent for {operation} on {filename}. Waiting ACKs from {healthy_peers}...")
+
+            # get ack
+            received_acks = set()
+            def on_ack(ch, method, props, body):
+                if props.correlation_id == corr_id:
+                    ack_msg = json.loads(body)
+                    sender = ack_msg.get("sender")
+                    if sender and sender in healthy_peers:
+                        received_acks.add(sender)
+
+            channel.basic_consume(queue=callback_queue, on_message_callback=on_ack, auto_ack=True)
+
+            # block and wait until collect all acks from healthy nodes OR timeout in 5s
+            start_time = time.time()
+            while not healthy_peers.issubset(received_acks) and (time.time() - start_time) <= 5:
+                connection.process_data_events(time_limit=0.5)
+
+            connection.close()
+
+            if healthy_peers.issubset(received_acks):
+                Logger.done(f"SYNC_OK! All healthy peers {received_acks} acknowledged.")
+            else:
+                missing = healthy_peers - received_acks
+                Logger.warning(f"Sync Timeout. Missing ACKs from: {missing}")
+
+        # collect all acks OR no one alive, do log
+        log_payload = {
+            "uuid": request_id,
+            "timestamp": time.time(),
+            "client_id": config.CLIENT_ID,
+            "filename": filename,
+            "operation": operation,
+            "appended": content
+        }
+        # send to recovery
+        try:
+            requests.post("http://recovery-service:8080/archive", json=log_payload, timeout=2)
+        except Exception as e:
+            Logger.warning(f"Failed to send archive to recovery-service: {e}")
+        
+        # write to local csv log
+        try:
+            if hasattr(config, "FILE_OPERATION_LOG"):
+                log_path = config.FILE_OPERATION_LOG
+                
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                
+                file_exists = os.path.exists(log_path)
+                with open(log_path, "a", newline="", encoding="utf-8") as f:
+                    fieldnames = ["uuid", "timestamp", "client_id", "filename", "operation", "appended"]
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    if not file_exists:
+                        writer.writeheader()
+                    writer.writerow(log_payload)
+        except Exception as e:
+            Logger.warning(f"Failed to write local operation log: {e}")
+
+    except Exception as e:
+        Logger.error(f"Async ACK and Log thread failed: {e}")
 
 
 def broadcast_sync(operation, filename, content="", v_clock=None, request_id=None):
-    payload = {
-        "sender": config.CLIENT_ID,
-        "operation": operation,
-        "filename": filename,
-        "content": content,
-        "v_clock": v_clock or utils.get_clock(filename),
-        "request_id": request_id,
-    }
+    current_clock = v_clock or utils.get_clock(filename)
     
-    try:
-        # connect
-        connection, channel = _get_channel()
-        channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
-        channel.exchange_declare(exchange="finance_sync_ack", exchange_type="direct")
-        callback_queue = channel.queue_declare(queue="", exclusive=True).method.queue
-        channel.queue_bind(
-            exchange="finance_sync_ack", queue=callback_queue, routing_key=config.CLIENT_ID
-        )
+    threading.Thread(
+        target=_async_ack_and_log,
+        args=(operation, filename, content, current_clock, request_id),
+        daemon=True
+    ).start()
+    
+    # payload = {
+    #     "sender": config.CLIENT_ID,
+    #     "operation": operation,
+    #     "filename": filename,
+    #     "content": content,
+    #     "v_clock": v_clock or utils.get_clock(filename),
+    #     "request_id": request_id,
+    # }
+    
+    # try:
+    #     # connect
+    #     connection, channel = _get_channel()
+    #     channel.exchange_declare(exchange="finance_sync", exchange_type="fanout")
+    #     channel.exchange_declare(exchange="finance_sync_ack", exchange_type="direct")
+    #     callback_queue = channel.queue_declare(queue="", exclusive=True).method.queue
+    #     channel.queue_bind(
+    #         exchange="finance_sync_ack", queue=callback_queue, routing_key=config.CLIENT_ID
+    #     )
         
-        # publish command
-        corr_id = str(uuid.uuid4())
+    #     # publish command
+    #     corr_id = str(uuid.uuid4())
 
-        channel.basic_publish(
-            exchange="finance_sync",
-            routing_key="",
-            properties=pika.BasicProperties(reply_to=callback_queue, correlation_id=corr_id),
-            body=json.dumps(payload),
-        )
-        Logger.sync(f"request for {operation}, {filename}, {content}")
+    #     channel.basic_publish(
+    #         exchange="finance_sync",
+    #         routing_key="",
+    #         properties=pika.BasicProperties(reply_to=callback_queue, correlation_id=corr_id),
+    #         body=json.dumps(payload),
+    #     )
+    #     Logger.sync(f"request for {operation}, {filename}, {content}")
 
-        # ! ACK logic deleted, trust rabbitMQ on this, boost primary client-node efficiency
-        # ! And this means when finance1 is dead, finance2 can continue to lead writing.
+    #     # ! ACK logic deleted, trust rabbitMQ on this, boost primary client-node efficiency
+    #     # ! And this means when finance1 is dead, finance2 can continue to lead writing.
 
-        # # starts to count ACK number, `finance_sync_ack`
-        # ack_count = 0
+    #     # # starts to count ACK number, `finance_sync_ack`
+    #     # ack_count = 0
 
-        # def on_ack(ch, method, props, body):
-        #     nonlocal ack_count
-        #     if props.correlation_id == corr_id:
-        #         ack_count += 1
+    #     # def on_ack(ch, method, props, body):
+    #     #     nonlocal ack_count
+    #     #     if props.correlation_id == corr_id:
+    #     #         ack_count += 1
 
-        # # starts listening ack
-        # channel.basic_consume(
-        #     queue=callback_queue, on_message_callback=on_ack, auto_ack=True
-        # )
+    #     # # starts listening ack
+    #     # channel.basic_consume(
+    #     #     queue=callback_queue, on_message_callback=on_ack, auto_ack=True
+    #     # )
 
-        # start_time = time.time()
-        # # wait for 3 ACKs (assuming 4 nodes total, 1 sender, 3 receivers)
-        # while ack_count < 3 and (time.time() - start_time) <= 10:
-        #     connection.process_data_events(time_limit=1)
-        # if ack_count < 3:
-        #     Logger.warning(f"Sync timeout. Received {ack_count}/3 ACKs.")
-        # else:
-        #     Logger.done(f"SYNC_OK Received {ack_count} ACKs")
+    #     # start_time = time.time()
+    #     # # wait for 3 ACKs (assuming 4 nodes total, 1 sender, 3 receivers)
+    #     # while ack_count < 3 and (time.time() - start_time) <= 10:
+    #     #     connection.process_data_events(time_limit=1)
+    #     # if ack_count < 3:
+    #     #     Logger.warning(f"Sync timeout. Received {ack_count}/3 ACKs.")
+    #     # else:
+    #     #     Logger.done(f"SYNC_OK Received {ack_count} ACKs")
 
-        connection.close()
-    except Exception as e:
-        Logger.error(f"Cannot reach RabbitMQ: {e}")
-        # save to local offline queue, wait until reconnects
-        save_to_offline_queue(payload)
+    #     connection.close()
+    # except Exception as e:
+    #     Logger.error(f"Cannot reach RabbitMQ: {e}")
+    #     # save to local offline queue, wait until reconnects
+    #     save_to_offline_queue(payload)

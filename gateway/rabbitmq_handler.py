@@ -15,14 +15,13 @@ QUEUE = os.getenv("SNAPSHOT_QUEUE", "regular_snapshot")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 RECOVERY_QUEUE = os.getenv("RECOVERY_QUEUE", "recovery_queue")
 
+
 def start_connection(username, password):
     connection = None
     while connection is None:
         try:
             credentials = pika.PlainCredentials(username, password)
-            connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
-            )
+            connection = pika.BlockingConnection(pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials))
         except Exception as e:
             print(f"[ERROR] Failed to connect to RabbitMQ: {e}")
             time.sleep(5)
@@ -99,6 +98,7 @@ def snapshot_listener():
     print("listening on", QUEUE)
     ch.start_consuming()
 
+
 def recovery_listener():
     connection = start_connection("guest", "guest")
 
@@ -150,13 +150,13 @@ def recovery_listener():
 
 
 def publish_result(
-        channel,
-        ok: bool,
-        client_id: Optional[str] = None,
-        restic_snapshot_id: Optional[str] = None,
-        command_id: Optional[str] = None,
-        error: Optional[str] = None,
-        type: str = "regular",
+    channel,
+    ok: bool,
+    client_id: Optional[str] = None,
+    restic_snapshot_id: Optional[str] = None,
+    command_id: Optional[str] = None,
+    error: Optional[str] = None,
+    type: str = "regular",
 ):
     if type == "regular":
         msg = {
@@ -194,4 +194,3 @@ def publish_result(
                 content_type="application/json",
             ),
         )
-
