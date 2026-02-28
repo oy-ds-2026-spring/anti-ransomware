@@ -50,7 +50,8 @@ def auth_required(f):
         return gss_auth.require_auth()(f)
     return f
 
-
+# unused method
+# included by _async_ack_and_log(operation, filename, content, v_clock, request_id) in rabbitmq_handler.py 
 def _log_and_archive(filename, operation, req_id, appended=""):
     """log locally and notify recovery service"""
 
@@ -74,7 +75,7 @@ def _log_and_archive(filename, operation, req_id, appended=""):
             writer.writerow(log_entry)
 
         # notify recovery service
-        requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
+        # requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
     except Exception as e:
         Logger.warning(f"Logging/Archive failed: {e}")
 
