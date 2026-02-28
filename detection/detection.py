@@ -40,7 +40,7 @@ client_health = {
     "finance1": {"health_status": "Safe", "last_entropy": 0.0},
     "finance2": {"health_status": "Safe", "last_entropy": 0.0},
     "finance3": {"health_status": "Safe", "last_entropy": 0.0},
-    "finance4": {"health_status": "Safe", "last_entropy": 0.0},
+    "finance4": {"health_status": "Safe", "last_entropy": 0.0}
 }
 
 app = Flask(__name__)
