@@ -93,6 +93,8 @@ services:
     build: .
     container_name: backup-storage
     command: python -m recovery.backup_server
+    expose:
+      - "50052" # Expose the new gRPC port
     environment:
       - KRB5_CONFIG=/etc/krb5.conf
       - KRB5_KTNAME=/keytabs/backup-storage.keytab

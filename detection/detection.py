@@ -1,3 +1,5 @@
+import uuid
+
 import pika
 import json
 import os
@@ -9,6 +11,8 @@ from flask import Flask, jsonify
 
 from common import lockdown_pb2
 from common import lockdown_pb2_grpc
+from common import recovery_pb2
+from common import recovery_pb2_grpc
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import Logger
@@ -271,6 +275,26 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
                           f"Normal activity: {os.path.basename(file_path)}")
         update_health_registry(client_id, status="Safe", entropy=entropy)
 
+# recovery trigger logic
+def trigger_recovery():
+    """Calls the Recovery Service via gRPC to restore the latest snapshot"""
+    recovery_address = "recovery-service:50052"
+    Logger.info(f"Sending gRPC recovery command to {recovery_address}...")
+    
+    with grpc.insecure_channel(recovery_address) as channel:
+        stub = recovery_pb2_grpc.RecoveryServiceStub(channel)
+        
+        # Generate the command_id
+        request = recovery_pb2.RecoveryRequest(command_id=str(uuid.uuid4()))
+        
+        try:
+            response = stub.TriggerRecovery(request, timeout=5)
+            if response.success:
+                Logger.done(f"Successfully triggered recovery: {response.message}")
+            else:
+                Logger.warning(f"Recovery Service rejected the command: {response.message}")
+        except grpc.RpcError as e:
+            Logger.warning(f"gRPC error when contacting Recovery Service: {e.details()}")
 
 # msg process
 def msg_callback(ch, method, properties, body):
@@ -300,17 +324,6 @@ def msg_callback(ch, method, properties, body):
             )
             return
 
-        # check entropy
-        # if entropy > ENTROPY_THRESHOLD:
-        #     handle_malware(ch, client_id, file_path, entropy)
-        # else:
-        #     # Scenario B: Normal file modification
-        #     # If previously 'Infected', and now a low entropy operation is received (possibly a recovered file),
-        #     # the status will automatically revert to 'Safe'.
-        #     status = "Safe"
-        #     log_client_status(
-        #         client_id, status, entropy, f"Normal activity: {os.path.basename(file_path)}"
-        #     )
         profile = get_profile(client_id)
 
         update_entropy_window(profile, entropy)
@@ -348,8 +361,6 @@ def main():
     channel.queue_declare(queue="file_events")
 
     # 3. send commands to the queue `commands`
-    # channel.queue_declare(queue="commands")
-
     Logger.done("Detection Engine Online. Waiting for entropy streams...")
 
     # 4. Start analyzing messages
