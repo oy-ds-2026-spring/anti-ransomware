@@ -84,3 +84,9 @@ http://localhost:8501/
 ```
 
 You can click on the `Attack` button to simulate attack behaviors on the system.
+
+
+
+## 📒 ProDetails
+
+See [<b>detail.md</b>](docs/detail.md) for more information
