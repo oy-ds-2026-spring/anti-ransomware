@@ -212,6 +212,8 @@ def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0
     # if unhealthy_nodes is None:
     #     return False, None, {"error": "All nodes are in healthy state"}
 
+    print(f"[INFO] Requesting to restore with snapshot: {clean_snapshot_id}")
+
     try:
         successful_nodes = []
         err_msg = {}
@@ -219,6 +221,7 @@ def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0
             node, ok, status, data = send_request(
                 node=up_node,
                 command_id=command_id,
+                clean_snapshot_id=clean_snapshot_id,
                 timeout=timeout,
                 api="snapshot/recover",
             )

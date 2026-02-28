@@ -20,7 +20,6 @@ class BackupStorageServicer(backup_pb2_grpc.BackupStorageServicer):
         # 这里就是你原本的 start_recovery 逻辑入口（demo 先打印）
         print(f"[backup-storage] StartRecovery called: command_id={request.command_id}")
 
-        # TODO: 这里接你的真实 start_recovery(command_id, target_node) 调用
         start_recovery(request.command_id)
 
         return backup_pb2.StartRecoveryReply(ok=True, message="recovery started")
@@ -49,8 +48,8 @@ def start_recovery(command_id: str):
     try:
         db = SnapshotDB("snapshots.db")
         connection = start_connection("guest", "guest", host=BROKER_HOST)
-        _, client_id, restic_snapshot_id, created_ts = db.get_latest_success_snapshot(require_snapshot_id=True)
-
+        result = db.get_latest_success_snapshot(require_snapshot_id=True)
+        restic_snapshot_id = result["restic_snapshot_id"]
         print(f"[BACKUP] The latest clean snapshot is: ", restic_snapshot_id)
 
         publish_request(connection, RECOVERY_QUEUE, command_id, restic_snapshot_id, type="recover")

@@ -346,8 +346,8 @@ def main():
 
     threading.Thread(target=run_health_api, daemon=True).start()
 
-    time.sleep(80)
-    trigger_recovery()
+    #time.sleep(60)
+    #trigger_recovery()
 
     # 1. connect to rabbitmq
     connection = None
