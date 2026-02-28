@@ -4,10 +4,11 @@ from concurrent import futures
 from common import lockdown_pb2
 from common import lockdown_pb2_grpc
 from client import config
-from client.security import execute_lockdown
+from client.security import execute_lockdown, execute_unlock
 
 
 class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
+
     def TriggerLockdown(self, request, context):
         if request.targeted_node != config.CLIENT_ID and request.targeted_node != "ALL":
             msg = f"Ignored. Lockdown meant for {request.targeted_node}, I am {config.CLIENT_ID}."
@@ -23,6 +24,23 @@ class LockdownServicer(lockdown_pb2_grpc.LockdownServiceServicer):
         )
 
         return lockdown_pb2.LockdownResponse(success=success, status_message=msg)
+    
+    def TriggerUnlock(self, request, context):
+        if request.targeted_node != config.CLIENT_ID and request.targeted_node != "ALL":
+            msg = f"Ignored. Unlock meant for {request.targeted_node}, I am {config.CLIENT_ID}."
+            print(f"[{config.CLIENT_ID}]: {msg}")
+            return lockdown_pb2.UnlockResponse(success=False, status_message=msg)
+
+        print(
+            f"[{config.CLIENT_ID}] gRPC received UNLOCK. threat_id: {request.threat_id}, reason: {request.reason}"
+        )
+
+        # Call the existing execute_unlock function from security.py
+        success, msg = execute_unlock(
+            trigger_source="gRPC (Detection Service)", reason=request.reason
+        )
+
+        return lockdown_pb2.UnlockResponse(success=success, status_message=msg)
 
 
 def serve():

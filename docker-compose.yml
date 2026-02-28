@@ -93,6 +93,8 @@ services:
     build: .
     container_name: backup-storage
     command: python -m recovery.backup_server
+    expose:
+      - "50052" # Expose the new gRPC port
     environment:
       - KRB5_CONFIG=/etc/krb5.conf
       - KRB5_KTNAME=/keytabs/backup-storage.keytab
@@ -101,6 +103,8 @@ services:
       - ./kerberos/krb5.conf:/etc/krb5.conf:ro
       - keytabs:/keytabs:ro
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       kdc-server:
         condition: service_healthy
     networks:
@@ -303,7 +307,7 @@ services:
   finance-gateway:
     build: .
     container_name: finance-gateway
-    command: python ./gateway/gateway.py
+    command: python -m gateway.gateway_server
     ports:
       - "9000:9000" # gateway swagger
     environment:
@@ -317,6 +321,10 @@ services:
     depends_on:
       kdc-server:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      detection-service:
+        condition: service_started
     networks:
       - ransom_net
 
@@ -345,6 +353,7 @@ services:
 
 networks:
   ransom_net:
+    name: ransom_net
     driver: bridge
 
 # run-time shared folder
