@@ -1,6 +1,8 @@
 import sys
 import os
 import threading
+import subprocess
+import time
 from watchdog.observers import Observer
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -13,7 +15,20 @@ from logger import Logger
 
 
 if __name__ == "__main__":
-    Logger.info(f"Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
+    Logger.done(f"Client started on {config.CLIENT_ID}. Watching {config.MONITOR_DIR}")
+
+    # initialize kerberos ##############################################
+    keytab_file = f"/keytabs/{config.CLIENT_ID}.keytab"
+    for _ in range(15):
+        if os.path.exists(keytab_file):
+            try:
+                # (cmd) `kinit`: register and get auth ticket from KDC, keytab_file as the id card.
+                subprocess.run(["kinit", "-kt", keytab_file, config.CLIENT_ID], check=True)
+                Logger.done("🔑 Kerberos ticket initialized.")
+                break
+            except Exception as e:
+                Logger.warning(f"🔑 Kerberos init failed: {e}")
+        time.sleep(2)
 
     # start listening to mq and rpc calls ################################
 
@@ -24,7 +39,6 @@ if __name__ == "__main__":
 
     # start gRPC server
     threading.Thread(target=grpc_server.serve, daemon=True).start()
-
 
     # watchdog: what to do when file operation observed ###################
     event_handler = EntropyMonitor()
@@ -38,4 +52,4 @@ if __name__ == "__main__":
     observer.start()
 
     # start flask interface ###############################################
-    routes.app.run(host="0.0.0.0", port=5000, debug=False)
+    routes.app.run(host="0.0.0.0", port=5000)

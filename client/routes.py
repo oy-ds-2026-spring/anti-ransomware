@@ -1,13 +1,26 @@
 import os
-import stat
+# import stat
 import time
-import multiprocessing
+# import multiprocessing
 import threading
 import base64
 import csv
 import requests
 from flask import Flask, jsonify, request
 from flasgger import Swagger
+
+# import python lib for kerberos
+# whether kerberos auth is on depends on `whether flask_gssapi is installed`
+# for easier dev debugging
+try:
+    from flask_gssapi import GSSAPI
+except ImportError:
+    GSSAPI = None
+
+try:
+    from requests_gssapi import HTTPSPNEGOAuth
+except ImportError:
+    HTTPSPNEGOAuth = None
 
 from client import config
 from client import utils
@@ -16,16 +29,34 @@ from client import rabbitmq_handler
 from client.security import execute_unlock
 from client.snapshot import take_snapshot, start_snapshot
 from logger import Logger
+from client.utils import is_duplicate_request
 
 app = Flask(__name__)
 Swagger(app)
 
+# Configure Kerberos/GSSAPI
+if GSSAPI:  # if no lib is installed, it's a dev env, don't user kerberos
+    app.config["GSSAPI_SPNEGO"] = True
+    gss_auth = GSSAPI(app)
+else:
+    gss_auth = None
 
-def _log_and_archive(filename, operation, appended=""):
+krb_auth = HTTPSPNEGOAuth() if HTTPSPNEGOAuth else None
+
+# close kerberos auth if dev env
+def auth_required(f):
+    if gss_auth:
+        return gss_auth.require_auth()(f)
+    return f
+
+
+def _log_and_archive(filename, operation, req_id, appended=""):
     """log locally and notify recovery service"""
 
     try:
+        # TODO enrypt `appended` field to avoid being sniffed
         log_entry = {
+            "uuid": req_id,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "client_id": config.CLIENT_ID,
             "filename": filename,
@@ -35,7 +66,7 @@ def _log_and_archive(filename, operation, appended=""):
         file_exists = os.path.exists(config.FILE_OPERATION_LOG)
         with open(config.FILE_OPERATION_LOG, "a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
-                f, fieldnames=["timestamp", "client_id", "filename", "operation", "appended"]
+                f, fieldnames=["uuid", "timestamp", "client_id", "filename", "operation", "appended"]
             )
             if not file_exists:
                 writer.writeheader()
@@ -64,7 +95,7 @@ def _run_encryption(monitor_dir, client_id):
             try:
                 if not os.access(root, os.W_OK):
                     Logger.lock_down(f"OS physical block: cannot write to {root}")
-                    return 
+                    return
 
                 # Fake encryption
                 with open(filepath, "rb") as f:
@@ -80,11 +111,25 @@ def _run_encryption(monitor_dir, client_id):
 
             except Exception as e:
                 Logger.error(f"Attack blocked by OS or lockdown: {e}")
-                return 
+                return
+
+
+def _propagate_attack():
+    peers = os.getenv("PEERS", "").split(",")
+    for peer in peers:
+        if not peer.strip():
+            continue
+        host = peer.split(":")[0]
+        try:
+            Logger.info(f"Propagating attack to {host}...")
+            requests.get(f"http://{host}:5000/attack", params={"propagated": "true"}, auth=krb_auth, timeout=1)
+        except Exception:
+            pass
 
 # simulate being attacked
 @app.route("/attack", methods=["GET"])
-def trigger_attack():
+@auth_required
+def trigger_attack(**kwargs):
     """
     Trigger a simulated ransomware attack on this node.
     ---
@@ -102,14 +147,16 @@ def trigger_attack():
               type: string
     """
     t = threading.Thread(
-        target=_run_encryption,
-        args=(config.MONITOR_DIR, config.CLIENT_ID),
-        daemon=True
+        target=_run_encryption, args=(config.MONITOR_DIR, config.CLIENT_ID), daemon=True
     )
     t.start()
 
     # p = multiprocessing.Process(target=_run_encryption, args=(config.MONITOR_DIR, config.CLIENT_ID))
     # p.start()
+
+    # Only propagate if this node is the origin (not triggered by another node)
+    if request.args.get("propagated") != "true":
+        threading.Thread(target=_propagate_attack, daemon=True).start()
 
     return jsonify({"status": "infected", "target": config.CLIENT_ID})
 
@@ -154,14 +201,21 @@ def snapshot_prepare():
     config.WRITE_PERMISSION.clear()
     return jsonify({"status": "ready"})
 
+
 @app.route("/snapshot/start", methods=["POST"])
 def snapshot_start():
     restic_snap_id = start_snapshot()
 
     if restic_snap_id is None:
-        return jsonify({"status": "error", "message": "Snapshot failed", "snapshot_id": restic_snap_id}), 500
+        return (
+            jsonify(
+                {"status": "error", "message": "Snapshot failed", "snapshot_id": restic_snap_id}
+            ),
+            500,
+        )
 
     return jsonify({"status": "success", "snapshot_id": restic_snap_id}), 200
+
 
 @app.route("/snapshot/commit", methods=["POST"])
 def snapshot_commit():
@@ -178,6 +232,11 @@ def snapshot_commit():
     # resume write operations
     config.WRITE_PERMISSION.set()
     return jsonify({"status": "resumed"}), 200
+
+@app.route("/snapshot/recover", methods=["POST"])
+def snapshot_recover():
+    # TODO: pull snapshots from repo and recover
+    return jsonify({"status": "successful"}), 200
 
 
 @app.route("/snapshot/data", methods=["GET"])
@@ -211,8 +270,10 @@ def snapshot_data():
 
 # param: filename
 # return: file content
+# `kwargs` to solve the arg issue after adding kerberos auth
 @app.route("/read", methods=["POST"])
-def read_file():
+@auth_required
+def read_file(**kwargs):
     """
     Read a file's content.
     ---
@@ -260,7 +321,8 @@ def read_file():
 # param: filename, content (optional)
 # return: success status
 @app.route("/create", methods=["POST"])
-def create_file():
+@auth_required
+def create_file(**kwargs):
     """
     Create a new file.
     ---
@@ -288,8 +350,15 @@ def create_file():
         description: Internal server error
     """
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
+    
+    # check double-write
+    json_data = request.get_json() or {}
+    req_id = json_data.get("request_id") # Uuid generated by gateway
+    if is_duplicate_request(json_data.pop("request_id", None)): # pop to clean data for model `CreateReq`
+        return jsonify(Response(status="success", message="Request already processed (idempotent)").to_dict())
+
     try:
-        req = CreateReq(**request.get_json())
+        req = CreateReq(**json_data)
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename is required").to_dict()), 400
 
@@ -298,9 +367,9 @@ def create_file():
 
         current_clock = utils.increment_clock(req.filename)
         # broadcast to others via RabbitMQ
-        rabbitmq_handler.broadcast_sync("CREATE", req.filename, content=req.content, v_clock=current_clock)
+        rabbitmq_handler.broadcast_sync("CREATE", req.filename, content=req.content, v_clock=current_clock, request_id=req_id)
 
-        _log_and_archive(req.filename, "CREATE", req.content)
+        _log_and_archive(req.filename, "CREATE", req_id, req.content)
 
         return jsonify(Response(status="success", message="File created").to_dict())
     except Exception as e:
@@ -311,7 +380,8 @@ def create_file():
 # param: filename and content to be appended(append only)
 # return: file content after modification
 @app.route("/write", methods=["POST"])
-def write_file():
+@auth_required
+def write_file(**kwargs):
     """
     Append content to an existing file.
     ---
@@ -340,8 +410,15 @@ def write_file():
         description: Internal server error
     """
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
+
+    # check double-write
+    json_data = request.get_json() or {}
+    req_id = json_data.get("request_id")
+    if is_duplicate_request(json_data.pop("request_id", None)): # pop to clean data for model
+        return jsonify(Response(status="success", message="Request already processed (idempotent)").to_dict())
+
     try:
-        req = WriteReq(**request.get_json())
+        req = WriteReq(**json_data)
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename and content are required").to_dict()), 400
 
@@ -350,9 +427,9 @@ def write_file():
 
         current_clock = utils.increment_clock(req.filename)
         # broadcast to others via RabbitMQ # with clock
-        rabbitmq_handler.broadcast_sync("WRITE", req.filename, content=req.content, v_clock=current_clock)
+        rabbitmq_handler.broadcast_sync("WRITE", req.filename, content=req.content, v_clock=current_clock, request_id=req_id)
 
-        _log_and_archive(req.filename, "MODIFY", req.content)
+        # _log_and_archive(req.filename, "WRITE", req_id, req.content)
 
         return jsonify(Response(status="success", content=new_content).to_dict())
     except Exception as e:
@@ -363,7 +440,8 @@ def write_file():
 # param: filename
 # return: success status
 @app.route("/delete", methods=["POST"])
-def delete_file():
+@auth_required
+def delete_file(**kwargs):
     """
     Delete a file.
     ---
@@ -391,8 +469,15 @@ def delete_file():
         description: Internal server error
     """
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
+
+    # check double-write
+    json_data = request.get_json() or {}
+    req_id = json_data.get("request_id")
+    if is_duplicate_request(json_data.pop("request_id", None)): # pop to clean data for model
+        return jsonify(Response(status="success", message="Request already processed (idempotent)").to_dict())
+
     try:
-        req = DeleteReq(**request.get_json())
+        req = DeleteReq(**json_data)
     except (TypeError, AttributeError):
         return jsonify(Response(error="Filename is required").to_dict()), 400
 
@@ -405,9 +490,9 @@ def delete_file():
 
         current_clock = utils.increment_clock(req.filename)
         # broadcast to others via RabbitMQ # with clock
-        rabbitmq_handler.broadcast_sync("DELETE", req.filename, v_clock=current_clock)
+        rabbitmq_handler.broadcast_sync("DELETE", req.filename, v_clock=current_clock, request_id=req_id)
 
-        _log_and_archive(req.filename, "DELETE", "")
+        _log_and_archive(req.filename, "DELETE", req_id, "")
 
         return jsonify(Response(status="success", message="File deleted").to_dict())
     except Exception as e:
@@ -417,7 +502,8 @@ def delete_file():
 # Simple file browser to view /data structure and content
 @app.route("/browse", defaults={"req_path": ""})
 @app.route("/browse/<path:req_path>")
-def browse_fs(req_path):
+@auth_required
+def browse_fs(req_path, **kwargs):
     """
     Browse the file system of the monitored directory.
     ---
@@ -475,5 +561,3 @@ def browse_fs(req_path):
 
     html.append("</ul>")
     return "".join(html)
-
-

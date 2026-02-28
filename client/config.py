@@ -1,5 +1,6 @@
 import os
 import threading
+import collections
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
@@ -17,6 +18,8 @@ VECTOR_CLOCK = {CLIENT_ID: 0}
 CLOCK_LOCK = threading.Lock()
 
 IS_LOCKED_DOWN = False
+IS_RECOVERING = False
+
 WRITE_PERMISSION = threading.Event()
 WRITE_PERMISSION.set()  # initially allowed
 
@@ -43,3 +46,9 @@ PROPER_HEADS = {
 FILE_CLOCKS = {}
 
 # print(f"[INIT] State module loaded. Client ID: {CLIENT_ID}")
+
+# Deduplication storage: client remember recent 10000 requests
+DEDUP_LIMIT = 10000
+DEDUP_SEEN = set()
+DEDUP_QUEUE = collections.deque()
+DEDUP_LOCK = threading.Lock()
