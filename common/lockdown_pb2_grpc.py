@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import lockdown_pb2 as lockdown__pb2
+import common.lockdown_pb2 as lockdown__pb2
 
 
 class LockdownServiceStub(object):

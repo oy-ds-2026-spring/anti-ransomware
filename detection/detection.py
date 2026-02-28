@@ -229,6 +229,28 @@ def trigger_client_lockdown(client_id, threat_id, reason):
         except grpc.RpcError as e:
             Logger.warning(f"gRPC error when contacting {client_address}: {e.details()}")
 
+# similar logic for unlock
+def trigger_client_unlock(client_id, threat_id, reason):
+    client_address = f"client-{client_id}:50051"
+    Logger.info(f"Sending gRPC unlock command to {client_address}...")
+
+    with grpc.insecure_channel(client_address) as channel:
+        stub = lockdown_pb2_grpc.LockdownServiceStub(channel)
+        request = lockdown_pb2.UnlockRequest(
+            threat_id=threat_id, timestamp=str(time.time()), reason=reason, targeted_node=client_id
+        )
+        try:
+            response = stub.TriggerUnlock(request, timeout=5)
+            if response.success:
+                Logger.done(f"Successfully triggered unlock on {client_address}")
+                return True
+            else:
+                Logger.warning(f"Failed to trigger unlock on {client_address}: {response.status_message}")
+                return False
+        except grpc.RpcError as e:
+            Logger.warning(f"gRPC error when contacting {client_address}: {e.details()}")
+            return False
+        
 
 def handle_malware(ch, client_id, file_path, entropy):
     alert_msg = f"MALWARE DETECTED! Entropy {entropy:.2f} on {os.path.basename(file_path)}"
@@ -246,6 +268,12 @@ def handle_malware(ch, client_id, file_path, entropy):
         log_command_lock_down(node, timestamp)
         if node != client_id:
             log_client_status(node, "Locked", 0, "System Lockdown Initiated")
+            
+    threading.Thread(
+        target=recovery_sequence,
+        args=(client_id,),
+        daemon=True
+    ).start()
 
 # trigger lockdown if score breaches certain level
 def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
@@ -295,6 +323,26 @@ def trigger_recovery():
                 Logger.warning(f"Recovery Service rejected the command: {response.message}")
         except grpc.RpcError as e:
             Logger.warning(f"gRPC error when contacting Recovery Service: {e.details()}")
+
+def recovery_sequence(client_id):
+    
+    Logger.info(f"[{client_id}] Infection isolated. Waiting 10s before recovery...")
+    time.sleep(10)
+    
+    # 1. UNLOCK THE NODE via gRPC
+    Logger.info(f"[{client_id}] Unlocking OS permissions via gRPC for backup restoration...")
+    threat_id = f"RECOVER-{int(time.time())}"
+    
+    unlock_success = trigger_client_unlock(client_id, threat_id, "Automated pre-recovery unlock")
+    
+    if unlock_success:
+        update_health_registry(client_id, status="Recovering")
+        log_client_status(client_id, "Recovering", 0, "Unlock successful. Restoring data.")
+    else:
+        Logger.error(f"[{client_id}] Unlock failed! Recovery may fail due to OS locks.")
+
+    # 2. START RECOVERY via gRPC
+    trigger_recovery()
 
 # msg process
 def msg_callback(ch, method, properties, body):
