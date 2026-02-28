@@ -103,6 +103,8 @@ services:
     depends_on:
       kdc-server:
         condition: service_healthy
+    expose:
+      - "50051"
     networks:
       - ransom_net
 

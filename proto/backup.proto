@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package backup;
+
+service BackupStorage {
+  rpc StartRecovery(StartRecoveryRequest) returns (StartRecoveryReply);
+}
+
+message StartRecoveryRequest {
+  string command_id = 1;
+}
+
+message StartRecoveryReply {
+  bool ok = 1;
+  string message = 2;
+}

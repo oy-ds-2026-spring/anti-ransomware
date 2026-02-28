@@ -116,29 +116,31 @@ def recovery_listener():
 
         try:
             if msg.get("type") == "RESTORE_REQUEST":
+                print("[INFO] got msg=", msg.get("type"))
                 clean_snapshot_id = msg.get("snapshot_id")
                 command_id = msg.get("command_id")
+                print("[INFO] Sending Snapshot restore request...")
                 ok, successful_nodes, message = send_recovery(command_id, clean_snapshot_id)
-                publish_result(
-                    ch,
-                    client_id=successful_nodes,
-                    command_id=command_id,
-                    ok=ok,
-                    error=message,
-                    type="recover"
-                )
+                # publish_result(
+                #     ch,
+                #     client_id=successful_nodes,
+                #     command_id=command_id,
+                #     ok=ok,
+                #     error=message,
+                #     type="recover"
+                # )
             else:
                 print(f"[INFO] ignore msg type={msg.get('type')}")
         except Exception as e:
             print(f"[ERROR] handler exception: {e}")
-            publish_result(
-                ch,
-                client_id="unknown",
-                restic_snapshot_id=None,
-                command_id=msg.get("command_id"),
-                ok=False,
-                error=f"handler exception: {e}",
-            )
+            # publish_result(
+            #     ch,
+            #     client_id="unknown",
+            #     restic_snapshot_id=None,
+            #     command_id=msg.get("command_id"),
+            #     ok=False,
+            #     error=f"handler exception: {e}",
+            # )
         finally:
             ch.basic_ack(delivery_tag=method.delivery_tag)
 

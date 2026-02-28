@@ -1,3 +1,5 @@
+import uuid
+
 import pika
 import json
 import os
@@ -7,7 +9,7 @@ import grpc
 import threading
 from flask import Flask, jsonify
 
-from common import lockdown_pb2
+from common import lockdown_pb2, backup_pb2_grpc, backup_pb2
 from common import lockdown_pb2_grpc
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -225,6 +227,18 @@ def trigger_client_lockdown(client_id, threat_id, reason):
         except grpc.RpcError as e:
             Logger.warning(f"gRPC error when contacting {client_address}: {e.details()}")
 
+def trigger_recovery():
+
+    channel = grpc.insecure_channel("backup-storage:50051")
+    stub = backup_pb2_grpc.BackupStorageStub(channel)
+
+    resp = stub.StartRecovery(
+        backup_pb2.StartRecoveryRequest(
+            command_id=str(uuid.uuid4()),
+        )
+    )
+
+    print("[detection-service] response:", resp.ok, resp.message)
 
 def handle_malware(ch, client_id, file_path, entropy):
     alert_msg = f"MALWARE DETECTED! Entropy {entropy:.2f} on {os.path.basename(file_path)}"
@@ -331,6 +345,9 @@ def main():
     Logger.info("Detection Service Starting...")
 
     threading.Thread(target=run_health_api, daemon=True).start()
+
+    time.sleep(80)
+    trigger_recovery()
 
     # 1. connect to rabbitmq
     connection = None

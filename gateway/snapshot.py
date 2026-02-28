@@ -118,7 +118,7 @@ def health_check(all_ready: bool, results: dict, type: Optional[str] = "prepare"
         up_node = preferred if preferred in healthy  else healthy[0]
 
         if all_ready:
-            Logger.info(f"[GATEWAY] ALL RESUMED = {all_ready}")
+            Logger.info(f"[GATEWAY] ALL READY = {all_ready}")
         else:
             Logger.warning("[GATEWAY] Failure in nodes detected")
             for n, r in results.items():
@@ -209,13 +209,13 @@ def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0
         if health_status != "Safe":
             unhealthy_nodes.append("client-" + client_id)
 
-    if unhealthy_nodes is None:
-        return False, None, {"error": "All nodes are in healthy state"}
+    # if unhealthy_nodes is None:
+    #     return False, None, {"error": "All nodes are in healthy state"}
 
     try:
         successful_nodes = []
         err_msg = {}
-        for up_node in unhealthy_nodes:
+        for up_node in FINANCE_NODES:
             node, ok, status, data = send_request(
                 node=up_node,
                 command_id=command_id,

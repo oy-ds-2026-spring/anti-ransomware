@@ -236,8 +236,13 @@ def snapshot_commit():
 
 @app.route("/snapshot/recover", methods=["POST"])
 def snapshot_recover():
+    print("[INFO] Received snapshot recover request.")
+    data = request.get_json(silent=True) or {}
+    snapshot_id = data.get("snapshot_id")
 
-    ok, message =  start_restore(snapshot_id=request.args.get("snapshot_id"))
+    if not snapshot_id:
+        return jsonify({"ok": False, "error": "missing snapshot_id"}), 400
+    ok, message =  start_restore(snapshot_id=snapshot_id)
     if ok:
         return jsonify({"status": "successful"}), 200
     else:

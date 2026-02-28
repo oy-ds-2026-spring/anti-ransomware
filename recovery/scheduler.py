@@ -28,4 +28,4 @@ def snapshot_loop(connection: pika.BlockingConnection, queue):
 
         publish_request(connection, queue=queue, command_id=command_id, type="regular")
 
-        time.sleep(60)
+        time.sleep(40)

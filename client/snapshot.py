@@ -30,7 +30,7 @@ def start_snapshot():
         return None
 
 def start_restore(snapshot_id: str):
-
+    print("[INFO] Starting restore...")
     return restore_snapshot(
         snapshot_id=snapshot_id,
         target_dir=MONITOR_DIR,
@@ -119,13 +119,12 @@ def restore_snapshot(
     target = Path(target_dir)
     target.mkdir(parents=True, exist_ok=True)
 
-    cmd = ["restic", "restore", snapshot_id, "--target", str(target)]
+    cmd = ["restic", "restore", snapshot_id, "--target", target_dir]
 
     try:
         r = subprocess.run(
             cmd,
-            check=True,
-            env=os.environ.copy(),
+            env=env,
             capture_output=True,
             text=True,
         )
