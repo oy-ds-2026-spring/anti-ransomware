@@ -236,19 +236,27 @@ def snapshot_commit():
 
 @app.route("/snapshot/recover", methods=["POST"])
 def snapshot_recover():
-    print("[INFO] Received snapshot recover request.")
-    data = request.get_json(silent=True) or {}
-    snapshot_id = data.get("clean_snapshot_id")
-    print("[INFO] Recovering to snapshot: ", snapshot_id)
+    config.IS_RECOVERING = True
+    execute_unlock(trigger_source="Recovery Engine", reason="OS write permission for Restic")
+    
+    try:
+        print("[INFO] Received snapshot recover request.")
+        data = request.get_json(silent=True) or {}
+        snapshot_id = data.get("clean_snapshot_id")
+        print("[INFO] Recovering to snapshot: ", snapshot_id)
 
-    if not snapshot_id:
-        return jsonify({"ok": False, "error": "missing snapshot_id"}), 400
+        if not snapshot_id:
+            return jsonify({"ok": False, "error": "missing snapshot_id"}), 400
 
-    ok, message =  start_restore(snapshot_id=snapshot_id)
-    if ok:
-        return jsonify({"status": "successful"}), 200
-    else:
-        return jsonify({"status": "error", "message": message}), 500
+        ok, message =  start_restore(snapshot_id=snapshot_id)
+        if ok:
+            return jsonify({"status": "successful"}), 200
+        else:
+            return jsonify({"status": "error", "message": message}), 500
+    
+    finally:
+        config.IS_RECOVERING = False
+        print("[INFO] Recovery shield deactivated. Node ready for sync.")
 
 
 @app.route("/snapshot/data", methods=["GET"])
