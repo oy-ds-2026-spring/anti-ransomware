@@ -1,0 +1,17 @@
+// common/recovery.proto
+syntax = "proto3";
+
+package common;
+
+service RecoveryService {
+    rpc TriggerRecovery (RecoveryRequest) returns (RecoveryResponse);
+}
+
+message RecoveryRequest {
+    string command_id = 1;
+}
+
+message RecoveryResponse {
+    bool success = 1;
+    string message = 2;
+}

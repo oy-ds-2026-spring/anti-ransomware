@@ -1,3 +1,5 @@
+import uuid
+
 import pika
 import json
 import os
@@ -7,8 +9,10 @@ import grpc
 import threading
 from flask import Flask, jsonify
 
-from common import lockdown_pb2
+from common import lockdown_pb2, backup_pb2_grpc, backup_pb2
 from common import lockdown_pb2_grpc
+from common import recovery_pb2
+from common import recovery_pb2_grpc
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import Logger
@@ -225,6 +229,28 @@ def trigger_client_lockdown(client_id, threat_id, reason):
         except grpc.RpcError as e:
             Logger.warning(f"gRPC error when contacting {client_address}: {e.details()}")
 
+# similar logic for unlock
+def trigger_client_unlock(client_id, threat_id, reason):
+    client_address = f"client-{client_id}:50051"
+    Logger.info(f"Sending gRPC unlock command to {client_address}...")
+
+    with grpc.insecure_channel(client_address) as channel:
+        stub = lockdown_pb2_grpc.LockdownServiceStub(channel)
+        request = lockdown_pb2.UnlockRequest(
+            threat_id=threat_id, timestamp=str(time.time()), reason=reason, targeted_node=client_id
+        )
+        try:
+            response = stub.TriggerUnlock(request, timeout=5)
+            if response.success:
+                Logger.done(f"Successfully triggered unlock on {client_address}")
+                return True
+            else:
+                Logger.warning(f"Failed to trigger unlock on {client_address}: {response.status_message}")
+                return False
+        except grpc.RpcError as e:
+            Logger.warning(f"gRPC error when contacting {client_address}: {e.details()}")
+            return False
+        
 
 def handle_malware(ch, client_id, file_path, entropy):
     alert_msg = f"MALWARE DETECTED! Entropy {entropy:.2f} on {os.path.basename(file_path)}"
@@ -242,6 +268,12 @@ def handle_malware(ch, client_id, file_path, entropy):
         log_command_lock_down(node, timestamp)
         if node != client_id:
             log_client_status(node, "Locked", 0, "System Lockdown Initiated")
+            
+    threading.Thread(
+        target=recovery_sequence,
+        args=(client_id,),
+        daemon=True
+    ).start()
 
 # trigger lockdown if score breaches certain level
 def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
@@ -271,6 +303,45 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
                           f"Normal activity: {os.path.basename(file_path)}")
         update_health_registry(client_id, status="Safe", entropy=entropy)
 
+# recovery trigger logic
+def trigger_recovery():
+    """Calls the Recovery Service via gRPC to restore the latest snapshot"""
+    recovery_address = "recovery-service:50052"
+    Logger.info(f"Sending gRPC recovery command to {recovery_address}...")
+    
+    with grpc.insecure_channel(recovery_address) as channel:
+        stub = recovery_pb2_grpc.RecoveryServiceStub(channel)
+        
+        # Generate the command_id
+        request = recovery_pb2.RecoveryRequest(command_id=str(uuid.uuid4()))
+        
+        try:
+            response = stub.TriggerRecovery(request, timeout=5)
+            if response.success:
+                Logger.done(f"Successfully triggered recovery: {response.message}")
+            else:
+                Logger.warning(f"Recovery Service rejected the command: {response.message}")
+        except grpc.RpcError as e:
+            Logger.warning(f"gRPC error when contacting Recovery Service: {e.details()}")
+
+def recovery_sequence(client_id):
+    
+    Logger.info(f"[{client_id}] Infection isolated. Waiting 10s before recovery...")
+    time.sleep(10)
+    
+    # 1. UNLOCK THE NODE via gRPC
+    Logger.info(f"[{client_id}] Unlocking OS permissions via gRPC for backup restoration...")
+    threat_id = f"RECOVER-{int(time.time())}"
+    
+    unlock_success = trigger_client_unlock(client_id, threat_id, "Automated pre-recovery unlock")
+    
+    if unlock_success:
+        log_client_status(client_id, "Recovering", 0, "Unlock successful. Restoring data.")
+    else:
+        Logger.error(f"[{client_id}] Unlock failed! Recovery may fail due to OS locks.")
+
+    # 2. START RECOVERY via gRPC
+    trigger_recovery()
 
 # msg process
 def msg_callback(ch, method, properties, body):
@@ -300,17 +371,6 @@ def msg_callback(ch, method, properties, body):
             )
             return
 
-        # check entropy
-        # if entropy > ENTROPY_THRESHOLD:
-        #     handle_malware(ch, client_id, file_path, entropy)
-        # else:
-        #     # Scenario B: Normal file modification
-        #     # If previously 'Infected', and now a low entropy operation is received (possibly a recovered file),
-        #     # the status will automatically revert to 'Safe'.
-        #     status = "Safe"
-        #     log_client_status(
-        #         client_id, status, entropy, f"Normal activity: {os.path.basename(file_path)}"
-        #     )
         profile = get_profile(client_id)
 
         update_entropy_window(profile, entropy)
@@ -330,6 +390,11 @@ def msg_callback(ch, method, properties, body):
 def main():
     Logger.info("Detection Service Starting...")
 
+    threading.Thread(target=run_health_api, daemon=True).start()
+
+    #time.sleep(60)
+    #trigger_recovery()
+
     # 1. connect to rabbitmq
     connection = None
     while connection is None:
@@ -348,8 +413,6 @@ def main():
     channel.queue_declare(queue="file_events")
 
     # 3. send commands to the queue `commands`
-    # channel.queue_declare(queue="commands")
-
     Logger.done("Detection Engine Online. Waiting for entropy streams...")
 
     # 4. Start analyzing messages

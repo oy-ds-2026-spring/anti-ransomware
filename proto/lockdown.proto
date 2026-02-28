@@ -5,6 +5,7 @@ package common;
 service LockdownService {
   // Detection calls this on Backup and Clients
   rpc TriggerLockdown (LockdownRequest) returns (LockdownResponse) {}
+  rpc TriggerUnlock (UnlockRequest) returns (UnlockResponse);
 }
 
 message LockdownRequest {
@@ -17,4 +18,16 @@ message LockdownRequest {
 message LockdownResponse {
   bool success = 1;
   string status_message = 2;
+}
+
+message UnlockRequest {
+    string threat_id = 1;
+    string timestamp = 2;
+    string reason = 3;
+    string targeted_node = 4;
+}
+
+message UnlockResponse {
+    bool success = 1;
+    string status_message = 2;
 }

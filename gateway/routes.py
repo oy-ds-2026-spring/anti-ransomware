@@ -371,7 +371,8 @@ def attack_op():
         description: Internal server error
     """
     try:
-        resp = _send_to_any("/attack", method="POST")
+        resp = _send_to_any("/attack", method="GET")
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
+        print(e)
         return jsonify(Response(error=str(e)).to_dict()), 500

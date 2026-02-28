@@ -1,10 +1,12 @@
 import os
 import threading
 import time
+from recovery.message_bus.http_handler import app
 
 from recovery.database import SnapshotDB
 from recovery.scheduler import snapshot_loop
 from recovery.message_bus.rabbitmq_handler import start_connection, snapshot_results_listener
+from recovery.message_bus.grpc_server import serve
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 QUEUE = os.getenv("QUEUE", "regular_snapshot")
@@ -24,6 +26,11 @@ def main():
         daemon=True
     )
     t.start()
+    print("[INFO] Starting gRPC Recovery Receiver...")
+    f = threading.Thread(target=app.run, daemon=True)
+    f.start()
+
+    threading.Thread(target=serve, daemon=True).start()
 
     conn2 = start_connection("guest", "guest", host=BROKER_HOST)
     # start snapshot schedule
