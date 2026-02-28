@@ -193,6 +193,8 @@ def send_snapshot(command_id: str, timeout: float = 10.0):
         return node, False, status, None
 
 def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0):
+    #TODO change back to rollback all nodes
+
     node, ok, status_code, data = send_request(
         node="detection-service",
         command_id=command_id,
