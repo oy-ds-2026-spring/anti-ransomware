@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from recovery.message_bus.http_handler import app
 
 from recovery.database import SnapshotDB
 from recovery.scheduler import snapshot_loop
@@ -25,13 +26,11 @@ def main():
         daemon=True
     )
     t.start()
-
     print("[INFO] Starting gRPC Recovery Receiver...")
-    t2 = threading.Thread(
-        target=serve,
-        daemon=True
-    )
-    t2.start()
+    f = threading.Thread(target=app.run, daemon=True)
+    f.start()
+
+    threading.Thread(target=serve, daemon=True).start()
 
     conn2 = start_connection("guest", "guest", host=BROKER_HOST)
     # start snapshot schedule

@@ -1,6 +1,9 @@
-import threading
 import subprocess
+import threading
 import time
+
+from gateway.rabbitmq_handler import snapshot_listener, recovery_listener
+from gateway.routes import *
 import os
 import sys
 

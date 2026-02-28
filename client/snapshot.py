@@ -3,8 +3,11 @@ import os
 import subprocess
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 import pika
+
+from logger import Logger
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
@@ -25,6 +28,15 @@ def start_snapshot():
     except Exception as e:
         print("ERROR:", e)
         return None
+
+def start_restore(snapshot_id: str):
+    print("[INFO] Starting restore...")
+    return restore_snapshot(
+        snapshot_id=snapshot_id,
+        target_dir=MONITOR_DIR,
+        repo_path=RESTIC_REPOSITORY,
+        password_file=RESTIC_PASSWORD_FILE,
+    )
 
 
 def take_snapshot(
@@ -84,3 +96,49 @@ def take_snapshot(
         raise RuntimeError(f"restic output did not contain snapshot_id. Output:\n{p.stdout}")
 
     return snapshot_id
+
+
+def restore_snapshot(
+        snapshot_id: str,
+        target_dir: str,
+        repo_path: str,
+        password_file: Optional[str] = None,
+        password: Optional[str] = None,
+):
+
+
+    env = os.environ.copy()
+    env["RESTIC_REPOSITORY"] = repo_path
+    if password is not None:
+        env["RESTIC_PASSWORD"] = password
+    elif password_file is not None:
+        env["RESTIC_PASSWORD_FILE"] = password_file
+    else:
+        raise ValueError("ERROR: Failed to restore snapshot due to RESTIC_PASSWORD missing.")
+
+    target = Path(target_dir)
+    target.mkdir(parents=True, exist_ok=True)
+
+    cmd = ["restic", "restore", snapshot_id, "--target", target_dir]
+
+    try:
+        r = subprocess.run(
+            cmd,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+    except subprocess.CalledProcessError as e:
+        Logger.error(f"RESTORE FAILED:{e.returncode}")
+        Logger.error(e.stderr or e.stdout)
+        return False, {"error": str(e)}
+
+    has_anything = any(target.rglob("*"))
+    if not has_anything:
+        Logger.warning("RESTORE FINISHED BUT TARGET IS EMPTY")
+        Logger.warning(r.stdout)
+        return False, {"error": str(r.stdout)}
+
+    Logger.info("RESTORE OK")
+    return True, {"error": None}

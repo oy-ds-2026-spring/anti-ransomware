@@ -9,7 +9,7 @@ import grpc
 import threading
 from flask import Flask, jsonify
 
-from common import lockdown_pb2
+from common import lockdown_pb2, backup_pb2_grpc, backup_pb2
 from common import lockdown_pb2_grpc
 from common import recovery_pb2
 from common import recovery_pb2_grpc
@@ -336,7 +336,6 @@ def recovery_sequence(client_id):
     unlock_success = trigger_client_unlock(client_id, threat_id, "Automated pre-recovery unlock")
     
     if unlock_success:
-        update_health_registry(client_id, status="Recovering")
         log_client_status(client_id, "Recovering", 0, "Unlock successful. Restoring data.")
     else:
         Logger.error(f"[{client_id}] Unlock failed! Recovery may fail due to OS locks.")
@@ -390,6 +389,11 @@ def msg_callback(ch, method, properties, body):
 
 def main():
     Logger.info("Detection Service Starting...")
+
+    threading.Thread(target=run_health_api, daemon=True).start()
+
+    #time.sleep(60)
+    #trigger_recovery()
 
     # 1. connect to rabbitmq
     connection = None

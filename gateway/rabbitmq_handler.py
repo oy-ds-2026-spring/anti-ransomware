@@ -1,14 +1,12 @@
 import json
 import os
-import subprocess
+import sys
 import time
-from datetime import datetime, timezone
 from typing import Optional
+
 import pika
 
-# from gateway.snapshot import send_recovery
-# from snapshot import send_snapshot
-from snapshot import send_recovery, send_snapshot
+from gateway.snapshot import send_recovery, send_snapshot
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")
 MONITOR_DIR = os.getenv("MONITOR_DIR", "/data")
@@ -17,14 +15,13 @@ QUEUE = os.getenv("SNAPSHOT_QUEUE", "regular_snapshot")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 RECOVERY_QUEUE = os.getenv("RECOVERY_QUEUE", "recovery_queue")
 
+
 def start_connection(username, password):
     connection = None
     while connection is None:
         try:
             credentials = pika.PlainCredentials(username, password)
-            connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials)
-            )
+            connection = pika.BlockingConnection(pika.ConnectionParameters(host=BROKER_HOST, credentials=credentials))
         except Exception as e:
             print(f"[ERROR] Failed to connect to RabbitMQ: {e}")
             time.sleep(5)
@@ -101,6 +98,7 @@ def snapshot_listener():
     print("listening on", QUEUE)
     ch.start_consuming()
 
+
 def recovery_listener():
     connection = start_connection("guest", "guest")
 
@@ -118,29 +116,31 @@ def recovery_listener():
 
         try:
             if msg.get("type") == "RESTORE_REQUEST":
+                print("[INFO] got msg=", msg.get("type"))
                 clean_snapshot_id = msg.get("snapshot_id")
                 command_id = msg.get("command_id")
+                print("[INFO] Sending Snapshot restore request...")
                 ok, successful_nodes, message = send_recovery(command_id, clean_snapshot_id)
-                publish_result(
-                    ch,
-                    client_id=successful_nodes,
-                    command_id=command_id,
-                    ok=ok,
-                    error=message,
-                    type="recover"
-                )
+                # publish_result(
+                #     ch,
+                #     client_id=successful_nodes,
+                #     command_id=command_id,
+                #     ok=ok,
+                #     error=message,
+                #     type="recover"
+                # )
             else:
                 print(f"[INFO] ignore msg type={msg.get('type')}")
         except Exception as e:
             print(f"[ERROR] handler exception: {e}")
-            publish_result(
-                ch,
-                client_id="unknown",
-                restic_snapshot_id=None,
-                command_id=msg.get("command_id"),
-                ok=False,
-                error=f"handler exception: {e}",
-            )
+            # publish_result(
+            #     ch,
+            #     client_id="unknown",
+            #     restic_snapshot_id=None,
+            #     command_id=msg.get("command_id"),
+            #     ok=False,
+            #     error=f"handler exception: {e}",
+            # )
         finally:
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -150,13 +150,13 @@ def recovery_listener():
 
 
 def publish_result(
-        channel,
-        ok: bool,
-        client_id: Optional[str] = None,
-        restic_snapshot_id: Optional[str] = None,
-        command_id: Optional[str] = None,
-        error: Optional[str] = None,
-        type: str = "regular",
+    channel,
+    ok: bool,
+    client_id: Optional[str] = None,
+    restic_snapshot_id: Optional[str] = None,
+    command_id: Optional[str] = None,
+    error: Optional[str] = None,
+    type: str = "regular",
 ):
     if type == "regular":
         msg = {
@@ -194,4 +194,3 @@ def publish_result(
                 content_type="application/json",
             ),
         )
-
