@@ -310,7 +310,7 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
 # recovery trigger logic
 def trigger_recovery():
     """Calls the Recovery Service via gRPC to restore the latest snapshot"""
-    recovery_address = "recovery-service:50052"
+    recovery_address = "backup-storage:50052"
     Logger.info(f"Sending gRPC recovery command to {recovery_address}...")
     
     with grpc.insecure_channel(recovery_address) as channel:
