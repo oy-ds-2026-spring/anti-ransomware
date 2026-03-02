@@ -67,9 +67,9 @@ client_profiles = {}
 WINDOW_SIZE = 10
 WRITE_WINDOW_SEC = 10
 
-HIGH_ENTROPY_BASE = 7.4   # adaptive baseline
-LOCKDOWN_SCORE = 6
-SUSPICIOUS_SCORE = 3
+HIGH_ENTROPY_BASE = 7.0   # adaptive baseline
+LOCKDOWN_SCORE = 4
+SUSPICIOUS_SCORE = 2
 
 # save `current_state` to shared_log
 def save_state():
