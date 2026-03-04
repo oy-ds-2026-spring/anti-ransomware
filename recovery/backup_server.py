@@ -16,7 +16,7 @@ RECOVERY_QUEUE = os.getenv("RECOVERY_QUEUE", "recovery_queue")
 def main():
     print("[INFO] Backup Service Starting...")
 
-    db = SnapshotDB("snapshots.db")
+    db = SnapshotDB("/data/snapshots.db")
     time.sleep(10)
     conn1 = start_connection("guest", "guest", host=BROKER_HOST)
     # Start listening to snapshot results

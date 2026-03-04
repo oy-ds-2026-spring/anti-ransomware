@@ -52,7 +52,7 @@ def start_recovery(command_id: str):
     :param command_id: a unique command id representing this operation, can be generated via "command_id = str(uuid.uuid4())"
     """
     try:
-        db = SnapshotDB("snapshots.db")
+        db = SnapshotDB("/data/snapshots.db")
         connection = start_connection("guest", "guest", host=BROKER_HOST)
         result = db.get_latest_success_snapshot(require_snapshot_id=True)
         restic_snapshot_id = result["restic_snapshot_id"]
