@@ -20,7 +20,7 @@ from logger import Logger
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")  # for DNS addressing
 LOG_FILE = "/logs/system_state.json"  # host machine `shared_logs/` -> docker `logs/`
 # ENTROPY_THRESHOLD = 7.5
-FINANCE_NODES = ["finance1", "finance2", "finance3", "finance4"]
+# FINANCE_NODES = ["finance1", "finance2", "finance3", "finance4"]
 
 # global state, real-time maintained in memory, written to log after update
 # for logging, for Dashboard
@@ -40,7 +40,7 @@ client_health = {
     "finance1": {"health_status": "Safe", "last_entropy": 0.0},
     "finance2": {"health_status": "Safe", "last_entropy": 0.0},
     "finance3": {"health_status": "Safe", "last_entropy": 0.0},
-    "finance4": {"health_status": "Safe", "last_entropy": 0.0},
+    "finance4": {"health_status": "Safe", "last_entropy": 0.0}
 }
 
 app = Flask(__name__)
@@ -67,9 +67,9 @@ client_profiles = {}
 WINDOW_SIZE = 10
 WRITE_WINDOW_SEC = 10
 
-HIGH_ENTROPY_BASE = 7.4   # adaptive baseline
-LOCKDOWN_SCORE = 6
-SUSPICIOUS_SCORE = 3
+HIGH_ENTROPY_BASE = 7.0   # adaptive baseline
+LOCKDOWN_SCORE = 4
+SUSPICIOUS_SCORE = 2
 
 # save `current_state` to shared_log
 def save_state():
@@ -180,7 +180,7 @@ def update_write_burst(profile, event_type):
 
     return profile["write_burst"]
 
-HIGH_ENTROPY_SAFE_EXT = {".jpeg", ".gif", ".bmp", ".mp4", ".mp3", ".avi", ".mov", ".7z", ".tar"}
+HIGH_ENTROPY_SAFE_EXT = (".jpeg", ".gif", ".bmp", ".mp4", ".mp3", ".avi", ".mov", ".7z", ".tar")
 
 def is_safe_high_entropy(file_path):
     return file_path.lower().endswith(HIGH_ENTROPY_SAFE_EXT)
@@ -262,12 +262,16 @@ def handle_malware(ch, client_id, file_path, entropy):
     # send lock down command
     timestamp = time.strftime("%H:%M:%S")
     threat_id = f"RANSOM-{int(time.time())}"
-    # trigger lockdown on all finance nodes
-    for node in FINANCE_NODES:
-        trigger_client_lockdown(node, threat_id, reason=f"High entropy threshold breached on {client_id}")
-        log_command_lock_down(node, timestamp)
-        if node != client_id:
-            log_client_status(node, "Locked", 0, "System Lockdown Initiated")
+    
+    # for node in FINANCE_NODES:
+    #     trigger_client_lockdown(node, threat_id, reason=f"High entropy threshold breached on {client_id}")
+    #     log_command_lock_down(node, timestamp)
+    #     if node != client_id:
+    #         log_client_status(node, "Locked", 0, "System Lockdown Initiated")
+    # trigger lockdown on the infected node itself
+    trigger_client_lockdown(client_id, threat_id, reason=f"High entropy threshold breached on {client_id}")
+    log_command_lock_down(client_id, timestamp)
+    log_client_status(client_id, "Locked", entropy, "System Lockdown Initiated")
             
     threading.Thread(
         target=recovery_sequence,
@@ -306,7 +310,7 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
 # recovery trigger logic
 def trigger_recovery():
     """Calls the Recovery Service via gRPC to restore the latest snapshot"""
-    recovery_address = "recovery-service:50052"
+    recovery_address = "backup-storage:50052"
     Logger.info(f"Sending gRPC recovery command to {recovery_address}...")
     
     with grpc.insecure_channel(recovery_address) as channel:
