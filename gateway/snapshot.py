@@ -193,26 +193,13 @@ def send_snapshot(command_id: str, timeout: float = 10.0):
         return node, False, status, None
 
 def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0):
-    #TODO change back to rollback all nodes
 
-    node, ok, status_code, data = send_request(
-        node="detection-service",
-        command_id=command_id,
-        api="/health",
-        type="get",
-        port=4020
-    )
-
-    unhealthy_nodes = []
-
-    for client_id, info in data.items():
-        health_status = info.get("health_status")
-
-        if health_status != "Safe":
-            unhealthy_nodes.append("client-" + client_id)
-
-    # if unhealthy_nodes is None:
-    #     return False, None, {"error": "All nodes are in healthy state"}
+    # all_ready, results = prepare_all_parallel(command_id)
+    #
+    # _, healthy = health_check(all_ready, results)
+    #
+    # if not healthy:
+    #     return None, False, None, {"error": "All nodes unreachable"}
 
     print(f"[INFO] Requesting to restore with snapshot: {clean_snapshot_id}")
 
