@@ -299,10 +299,11 @@ def _async_ack_and_log(operation, filename, content, v_clock, request_id):
             "appended": content
         }
         # send to recovery
-        # try:
-        #     requests.post("http://recovery-service:8080/archive", json=log_payload, timeout=2)
-        # except Exception as e:
-        #     Logger.warning(f"Failed to send archive to recovery-service: {e}")
+        try:
+            requests.post("http://backup-storage:8080/archive", json=log_payload, timeout=2)
+            # requests.post("http://recovery-service:8080/archive", json=log_payload, timeout=2)
+        except Exception as e:
+            Logger.warning(f"Failed to send archive to backup-storage: {e}")
         
         # write to local csv log
         try:
