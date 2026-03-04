@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from typing import Optional
 
 import pika
@@ -124,6 +125,7 @@ def recovery_listener():
             else:
                 print(f"[INFO] ignore msg type={msg.get('type')}")
         except Exception as e:
+            traceback.print_exc()
             print(f"[ERROR] handler exception: {e}")
         finally:
             ch.basic_ack(delivery_tag=method.delivery_tag)

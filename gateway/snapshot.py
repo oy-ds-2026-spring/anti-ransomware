@@ -194,19 +194,19 @@ def send_snapshot(command_id: str, timeout: float = 10.0):
 
 def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0):
 
-    all_ready, results = prepare_all_parallel(command_id)
-
-    _, healthy = health_check(all_ready, results)
-
-    if len(healthy) == 0:
-        return None, False, None, {"error": "All nodes unreachable"}
+    # all_ready, results = prepare_all_parallel(command_id)
+    #
+    # _, healthy = health_check(all_ready, results)
+    #
+    # if not healthy:
+    #     return None, False, None, {"error": "All nodes unreachable"}
 
     print(f"[INFO] Requesting to restore with snapshot: {clean_snapshot_id}")
 
     try:
         successful_nodes = []
         err_msg = {}
-        for up_node in healthy:
+        for up_node in FINANCE_NODES:
             node, ok, status, data = send_request(
                 node=up_node,
                 command_id=command_id,
