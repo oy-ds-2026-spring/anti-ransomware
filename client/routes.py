@@ -18,10 +18,6 @@ try:
 except ImportError:
     GSSAPI = None
 
-try:
-    from requests_gssapi import HTTPSPNEGOAuth
-except ImportError:
-    HTTPSPNEGOAuth = None
 
 from client import config
 from client import utils
@@ -31,6 +27,7 @@ from client.security import execute_unlock
 from client.snapshot import start_snapshot, start_restore
 from logger import Logger
 from client.utils import is_duplicate_request
+from client.config import krb_auth
 
 app = Flask(__name__)
 Swagger(app)
@@ -41,8 +38,6 @@ if GSSAPI:  # if no lib is installed, it's a dev env, don't user kerberos
     gss_auth = GSSAPI(app)
 else:
     gss_auth = None
-
-krb_auth = HTTPSPNEGOAuth() if HTTPSPNEGOAuth else None
 
 # close kerberos auth if dev env
 def auth_required(f):
@@ -230,6 +225,23 @@ def snapshot_start():
 
     return jsonify({"status": "success", "snapshot_id": restic_snap_id}), 200
 
+
+@app.route("/health", methods=["GET"])
+def test_health():
+    """
+    Test the health of the detection service.
+    ---
+    tags:
+      - Health
+    responses:
+      200:
+        description: Returns the health status of the detection service.
+    """
+    try:
+        resp = requests.get("http://detection-service:4020/health", timeout=2, auth=krb_auth)
+        return resp.json(), resp.status_code
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 @app.route("/snapshot/commit", methods=["POST"])
 def snapshot_commit():
