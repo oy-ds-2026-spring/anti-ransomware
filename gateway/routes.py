@@ -136,6 +136,23 @@ def _send_to_any(endpoint, method="POST", json_data=None, timeout=3):
     
     raise last_error if last_error else Exception("All finance nodes are down")
   
+@app.route("/health", methods=["GET"])
+def test_health():
+    """
+    Test the health of the detection service.
+    ---
+    tags:
+      - Health
+    responses:
+      200:
+        description: Returns the health status of the detection service.
+    """
+    try:
+        resp = requests.get("http://detection-service:4020/health", timeout=2, auth=krb_auth)
+        return resp.json(), resp.status_code
+    except Exception as e:
+        return {"error": str(e)}, 500
+
 
 # route to finance1234 node
 @app.route("/finance/read", methods=["POST"])

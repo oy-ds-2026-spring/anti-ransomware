@@ -34,6 +34,13 @@ kadmin.local -q "addprinc -randkey gateway" || true
 rm -f /keytabs/gateway.keytab
 kadmin.local -q "ktadd -k /keytabs/gateway.keytab gateway"
 
+# Create principal and keytab for detection
+kadmin.local -q "addprinc -randkey detection-service" || true
+kadmin.local -q "addprinc -randkey HTTP/detection-service" || true
+rm -f /keytabs/detection-service.keytab
+kadmin.local -q "ktadd -k /keytabs/detection-service.keytab detection-service"
+kadmin.local -q "ktadd -k /keytabs/detection-service.keytab HTTP/detection-service"
+
 # Create principal and keytab for backup-storage
 kadmin.local -q "addprinc -randkey backup-storage" || true
 rm -f /keytabs/backup-storage.keytab
