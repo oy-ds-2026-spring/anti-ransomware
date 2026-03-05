@@ -18,10 +18,6 @@ try:
 except ImportError:
     GSSAPI = None
 
-try:
-    from requests_gssapi import HTTPSPNEGOAuth
-except ImportError:
-    HTTPSPNEGOAuth = None
 
 from client import config
 from client import utils
@@ -31,6 +27,7 @@ from client.security import execute_unlock
 from client.snapshot import start_snapshot, start_restore
 from logger import Logger
 from client.utils import is_duplicate_request
+from client.config import krb_auth
 
 app = Flask(__name__)
 Swagger(app)
@@ -41,8 +38,6 @@ if GSSAPI:  # if no lib is installed, it's a dev env, don't user kerberos
     gss_auth = GSSAPI(app)
 else:
     gss_auth = None
-
-krb_auth = HTTPSPNEGOAuth() if HTTPSPNEGOAuth else None
 
 # close kerberos auth if dev env
 def auth_required(f):
@@ -82,6 +77,7 @@ def _log_and_archive(filename, operation, req_id, appended=""):
 
 
 def _run_encryption(monitor_dir, client_id):
+    # If lockdown already in place, abort immediately
     if getattr(config, "IS_LOCKED_DOWN", False):
         Logger.warning(f"Attack blocked: {client_id} is locked down!")
         return
@@ -90,22 +86,32 @@ def _run_encryption(monitor_dir, client_id):
         for file in files:
             filepath = os.path.join(root, file)
 
-            # Check shared memory flag before touching the file
+            # stop if lockdown triggered during the run
             if getattr(config, "IS_LOCKED_DOWN", False):
                 Logger.lock_down("Lockdown activated mid-encryption. Stopping attack.")
                 return
 
             try:
-                if not os.access(root, os.W_OK):
-                    Logger.lock_down(f"OS physical block: cannot write to {root}")
-                    return
+                # we don't rely on os.access since the process may run as root
+                # permission checks above are best-effort; enforcement is done via
+                # the shared lockdown flag and by changing file modes in execute_lockdown
 
                 # Fake encryption
                 with open(filepath, "rb") as f:
                     data = f.read()
 
+                # if locked down happened while reading, break out
+                if getattr(config, "IS_LOCKED_DOWN", False):
+                    Logger.lock_down("Lockdown detected after read; aborting.")
+                    return
+
                 with open(filepath, "wb") as f:
                     f.write(os.urandom(len(data)))
+
+                # check one more time before renaming
+                if getattr(config, "IS_LOCKED_DOWN", False):
+                    Logger.lock_down("Lockdown detected after write; aborting without rename.")
+                    return
 
                 os.rename(filepath, filepath + ".locked")
                 Logger.encrypted(f"{file}")
@@ -219,6 +225,23 @@ def snapshot_start():
 
     return jsonify({"status": "success", "snapshot_id": restic_snap_id}), 200
 
+
+@app.route("/health", methods=["GET"])
+def test_health():
+    """
+    Test the health of the detection service.
+    ---
+    tags:
+      - Health
+    responses:
+      200:
+        description: Returns the health status of the detection service.
+    """
+    try:
+        resp = requests.get("http://detection-service:4020/health", timeout=2, auth=krb_auth)
+        return resp.json(), resp.status_code
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 @app.route("/snapshot/commit", methods=["POST"])
 def snapshot_commit():
@@ -373,6 +396,10 @@ def create_file(**kwargs):
       500:
         description: Internal server error
     """
+    # deny when locked down
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        return jsonify(Response(status="error", message="System is locked down").to_dict()), 403
+
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     
     # check double-write
@@ -433,6 +460,10 @@ def write_file(**kwargs):
       500:
         description: Internal server error
     """
+    # deny when locked down
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        return jsonify(Response(status="error", message="System is locked down").to_dict()), 403
+
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
 
     # check double-write
@@ -492,6 +523,10 @@ def delete_file(**kwargs):
       500:
         description: Internal server error
     """
+    # deny when locked down
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        return jsonify(Response(status="error", message="System is locked down").to_dict()), 403
+
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
 
     # check double-write

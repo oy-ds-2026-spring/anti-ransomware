@@ -3,3 +3,4 @@ shared_logs/
 venv
 __pycache__/
 .vscode/
+benchmark.py

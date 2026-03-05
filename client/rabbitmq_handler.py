@@ -12,6 +12,8 @@ from client import utils
 from logger import Logger
 from client.utils import is_duplicate_request
 
+from client.config import krb_auth
+
 # offline outbox
 OFFLINE_QUEUE_FILE = os.path.join(config.MONITOR_DIR, f"offline_{config.CLIENT_ID}.json")
 OFFLINE_LOCK = threading.Lock()  # thread lock
@@ -146,6 +148,11 @@ def send_msg(file_path, entropy, event_type):
         return
     
     try:
+        # do not send new file events while locked down
+        if getattr(config, "IS_LOCKED_DOWN", False):
+            Logger.warning(f"[LOCKDOWN] dropping event {file_path}"
+                           f" because node is locked")
+            return
         # init short connection for every sending
         connection, channel = _get_channel()
         channel.queue_declare(queue="file_events")
@@ -233,7 +240,7 @@ def _async_ack_and_log(operation, filename, content, v_clock, request_id):
         # get all health nodes
         healthy_peers = set()
         try:
-            resp = requests.get("http://detection-service:4020/health", timeout=2)
+            resp = requests.get("http://detection-service:4020/health", timeout=2, auth=krb_auth)
             if resp.status_code == 200:
                 health_data = resp.json()
                 for node, status_info in health_data.items():
