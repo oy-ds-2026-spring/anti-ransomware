@@ -103,7 +103,10 @@ def log_client_status(client_id, status, entropy, message):
     # 2. last_entropy
     current_state["last_entropy"] = entropy
 
-    # 3. Update logs (keep only the latest 10 entries)
+    # 3. Update health registry to keep /health endpoint in sync
+    update_health_registry(client_id, status=status, entropy=entropy)
+
+    # 4. Update logs (keep only the latest 10 entries)
     timestamp = time.strftime("%H:%M:%S")
     log_entry = f"[{timestamp}] {message}"
     current_state["logs"].append(log_entry)
@@ -296,7 +299,6 @@ def handle_malware(ch, client_id, file_path, entropy):
     Logger.ransomware(alert_msg)
 
     log_client_status(client_id, "Infected", entropy, alert_msg)
-    update_health_registry(client_id, status="Infected", entropy=entropy)
 
     # send lock down command
     timestamp = time.strftime("%H:%M:%S")
@@ -344,7 +346,6 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
             log_client_status(
                 client_id, "Suspicious", entropy, "Abnormal behaviour detected"
             )
-            update_health_registry(client_id, status="Suspicious", entropy=entropy)
     else:
         if profile["state"] not in ["Locked", "Recovering"]:
             profile["state"] = "Safe"
@@ -354,7 +355,6 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
                 entropy,
                 f"Normal activity: {os.path.basename(file_path)}",
             )
-            update_health_registry(client_id, status="Safe", entropy=entropy)
 
 
 # recovery trigger logic

@@ -1,6 +1,39 @@
 import os
+import json
 from client import config
 from logger import Logger
+
+# State persistence file
+STATE_FILE = "/logs/client_state.json"
+
+
+def save_state():
+    """Persist client state to file"""
+    try:
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+        state = {
+            "IS_LOCKED_DOWN": config.IS_LOCKED_DOWN,
+            "IS_RECOVERING": config.IS_RECOVERING,
+        }
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except Exception as e:
+        Logger.warning(f"Failed to save state: {e}")
+
+
+def load_state():
+    """Load client state from file"""
+    try:
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, "r") as f:
+                state = json.load(f)
+                config.IS_LOCKED_DOWN = state.get("IS_LOCKED_DOWN", False)
+                config.IS_RECOVERING = state.get("IS_RECOVERING", False)
+                Logger.info(f"Loaded state: IS_LOCKED_DOWN={config.IS_LOCKED_DOWN}, IS_RECOVERING={config.IS_RECOVERING}")
+                return True
+    except Exception as e:
+        Logger.warning(f"Failed to load state: {e}")
+    return False
 
 
 # write protection action
@@ -47,6 +80,7 @@ def execute_lockdown(trigger_source="Unknown", reason=""):
                     Logger.warning(f"Failed to lock file {file_path}: {e}")
 
         config.IS_LOCKED_DOWN = True
+        save_state()  # Persist locked state
         return True, "Directory physically locked via OS."
     except Exception as e:
         return False, str(e)
@@ -93,6 +127,7 @@ def execute_unlock(trigger_source="Unknown", reason=""):
         # reset the lockdown state and resume writes
         config.IS_LOCKED_DOWN = False
         config.WRITE_PERMISSION.set()
+        save_state()  # Persist unlocked state
         return True, f"Directory permissions fully restored."
     except Exception as e:
         Logger.error(f"Failed to unlock directory: {e}")
