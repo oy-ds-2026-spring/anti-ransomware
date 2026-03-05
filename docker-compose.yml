@@ -63,14 +63,23 @@ services:
   detection-service:
     build: .
     container_name: detection-service
+    hostname: detection
     command: python -m detection.detection
     ports:
       - "4020:4020"
+    environment:
+      - CLIENT_ID=detection
+      - KRB5_CONFIG=/etc/krb5.conf
+      - KRB5_KTNAME=/keytabs/detection.keytab
     volumes:
       - .:/app  # mount current source code; changes take effect after restart
       - ./shared_logs:/logs
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - keytabs:/keytabs:ro
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      kdc-server:
         condition: service_healthy
     networks:
       - ransom_net
