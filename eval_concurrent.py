@@ -3,13 +3,14 @@ from requests_gssapi import HTTPSPNEGOAuth
 import threading
 import uuid
 import time
+import random
 
-auth = HTTPSPNEGOAuth()
+init_auth = HTTPSPNEGOAuth()
 URL = "http://localhost:9000/finance/write"
 FILENAME = "report_concurrent.txt"
 
 # Initialize empty file
-requests.post("http://localhost:9000/finance/create", json={"filename": FILENAME, "content": "Init\n", "request_id": str(uuid.uuid4())}, auth=auth)
+requests.post("http://localhost:9000/finance/create", json={"filename": FILENAME, "content": "Init\n", "request_id": str(uuid.uuid4())}, auth=init_auth)
 
 success_count = 0
 lock = threading.Lock()
@@ -17,14 +18,17 @@ NUM_THREADS = 50  # Simulating 50 concurrent clients
 
 def send_write(thread_id):
     global success_count
+    session = requests.Session()
+    session.auth = HTTPSPNEGOAuth()
     req_id = str(uuid.uuid4())
     payload = {
         "filename": FILENAME,
         "content": f"Data block from concurrent thread {thread_id}\n",
         "request_id": req_id
     }
+    time.sleep(random.uniform(0, 0.5))
     try:
-        resp = requests.post(URL, json=payload, auth=auth)
+        resp = requests.post(URL, json=payload)
         if resp.status_code == 200 and resp.json().get('status') == 'success':
             with lock:
                 success_count += 1
