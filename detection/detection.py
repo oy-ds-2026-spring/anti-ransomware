@@ -310,6 +310,7 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
 # recovery trigger logic
 def trigger_recovery():
     """Calls the Recovery Service via gRPC to restore the latest snapshot"""
+    r = requests.get(f"http://finance-gateway:9000/start")
     recovery_address = "backup-storage:50052"
     Logger.info(f"Sending gRPC recovery command to {recovery_address}...")
     

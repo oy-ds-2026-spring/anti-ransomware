@@ -369,3 +369,58 @@ def attack_op():
     except Exception as e:
         print(e)
         return jsonify(Response(error=str(e)).to_dict()), 500
+
+
+_lock = threading.Lock()
+_start_time = None
+
+
+@app.route("/start", methods=["GET"])
+def start_timer():
+    global _start_time
+    with _lock:
+        if _start_time is not None:
+            # 已经在计时中
+            return jsonify({
+                "status": "already_started",
+                "started_at_epoch": _start_time
+            }), 200
+
+        _start_time = time.time()
+        return jsonify({
+            "status": "started",
+            "started_at_epoch": _start_time
+        }), 200
+
+
+@app.route("/end", methods=["GET"])
+def end_timer():
+    global _start_time
+    with _lock:
+        if _start_time is None:
+            return jsonify({
+                "status": "not_started",
+                "error": "call /start first"
+            }), 400
+
+        end_time = time.time()
+        elapsed = end_time - _start_time
+
+        # 结束后重置，方便下一轮计时
+        _start_time = None
+
+        return jsonify({
+            "status": "ended",
+            "elapsed_seconds": elapsed
+        }), 200
+
+
+@app.route("/status", methods=["GET"])
+def status():
+    with _lock:
+        if _start_time is None:
+            return jsonify({"status": "idle"}), 200
+        return jsonify({
+            "status": "running",
+            "elapsed_seconds": time.time() - _start_time
+        }), 200
