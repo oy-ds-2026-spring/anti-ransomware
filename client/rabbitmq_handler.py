@@ -142,6 +142,9 @@ def _get_channel():
 
 
 def send_msg(file_path, entropy, event_type):
+    if getattr(config, "IS_RECOVERING", False):
+        return
+    
     try:
         # init short connection for every sending
         connection, channel = _get_channel()
