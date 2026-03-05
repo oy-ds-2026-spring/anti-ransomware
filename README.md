@@ -3,13 +3,14 @@
 ## 📚 Introduction
 
 <p align="center">Anti-ramsomware Distributed Model<br>
-🚀Constructed with🚀<br>
+🚀Constructed with🚀<br><br>
     <img alt="Static Badge" src="https://img.shields.io/badge/Python-3.9-blue">
     <img alt="Static Badge" src="https://img.shields.io/badge/Docker-29.2-0077b6">
     <img alt="Static Badge" src="https://img.shields.io/badge/RabbitMQ-3-ca6702">
     <img alt="Static Badge" src="https://img.shields.io/badge/Restic_Server-latest-a3b18a">
     <img alt="Static Badge" src="https://img.shields.io/badge/Flask-2.3-669bbc">
 </p>
+
 
 <br>
 
@@ -84,3 +85,9 @@ http://localhost:8501/
 ```
 
 You can click on the `Attack` button to simulate attack behaviors on the system.
+
+
+
+## 📒 Project Details
+
+See [<b>detail.md</b>](docs/detail.md) for more information
