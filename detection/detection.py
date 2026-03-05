@@ -7,6 +7,7 @@ import time
 import sys
 import grpc
 import threading
+import requests
 from flask import Flask, jsonify
 
 from common import lockdown_pb2, backup_pb2_grpc, backup_pb2
