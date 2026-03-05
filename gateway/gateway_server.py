@@ -1,12 +1,14 @@
-import threading
 import subprocess
+import threading
 import time
+
+from gateway.rabbitmq_handler import snapshot_listener, recovery_listener
+from gateway.routes import *
 import os
 import sys
-from receiver import snapshot_listener
-from routes import *
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from logger import Logger
 
 
@@ -26,4 +28,5 @@ if __name__ == "__main__":
         time.sleep(2)
 
     threading.Thread(target=snapshot_listener, daemon=True).start()
+    threading.Thread(target=recovery_listener, daemon=True).start()
     app.run(host="0.0.0.0", port=9000)

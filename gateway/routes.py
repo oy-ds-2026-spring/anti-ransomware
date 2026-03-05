@@ -113,10 +113,9 @@ def _send_to_primary(endpoint, method="POST", json_data=None):
     # no one alive
     raise Exception("All finance nodes are down!")
 
-# read: retry, until every client is confirmed dead
 def _send_to_any(endpoint, method="POST", json_data=None, timeout=3):
     nodes = list(FINANCE_NODES)
-    random.shuffle(nodes)
+    random.shuffle(nodes) # random assign nodes
     
     last_error = None
     
@@ -136,6 +135,7 @@ def _send_to_any(endpoint, method="POST", json_data=None, timeout=3):
             continue
     
     raise last_error if last_error else Exception("All finance nodes are down")
+  
 
 # route to finance1234 node
 @app.route("/finance/read", methods=["POST"])
@@ -209,6 +209,9 @@ def write_op():
       500:
         description: Internal server error
     """
+    json_data = request.get_json() or {}
+    custom_req_id = json_data.pop("request_id", None)
+    
     try:
         req = WriteReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -218,9 +221,10 @@ def write_op():
     try:
         # give global unique ID to a write request
         payload = asdict(req)
-        payload["request_id"] = str(uuid.uuid4())
+        payload["request_id"] = custom_req_id or str(uuid.uuid4())
         Logger.info(payload["request_id"])
-        resp = _send_to_primary("/write", method="POST", json_data=payload)
+        
+        resp = _send_to_any("/write", method="POST", json_data=payload)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -257,6 +261,10 @@ def create_op():
       500:
         description: Internal server error
     """
+    # for eval: if have custom request_id
+    json_data = request.get_json() or {}
+    custom_req_id = json_data.pop("request_id", None)
+    
     try:
         req = CreateReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -264,8 +272,8 @@ def create_op():
     try:
         # give global unique ID to a write request
         payload = asdict(req)
-        payload["request_id"] = str(uuid.uuid4())
-        resp = _send_to_primary("/create", method="POST", json_data=payload)
+        payload["request_id"] = custom_req_id or str(uuid.uuid4())
+        resp = _send_to_any("/create", method="POST", json_data=payload)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -342,7 +350,7 @@ def delete_op():
         # give global unique ID to a write request
         payload = asdict(req)
         payload["request_id"] = str(uuid.uuid4())
-        resp = _send_to_primary("/delete", method="POST", json_data=payload)
+        resp = _send_to_any("/delete", method="POST", json_data=payload)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify(Response(error=str(e)).to_dict()), 500
@@ -363,7 +371,8 @@ def attack_op():
         description: Internal server error
     """
     try:
-        resp = _send_to_primary("/attack", method="GET")
+        resp = _send_to_any("/attack", method="GET")
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
+        print(e)
         return jsonify(Response(error=str(e)).to_dict()), 500

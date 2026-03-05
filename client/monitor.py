@@ -42,7 +42,7 @@ class EntropyMonitor(FileSystemEventHandler):
         return False
 
     def on_modified(self, event):
-        if config.IS_LOCKED_DOWN or event.is_directory:
+        if config.IS_LOCKED_DOWN or getattr(config, "IS_RECOVERING", False) or event.is_directory: 
             return
         filename = event.src_path
         basename = os.path.basename(filename)
@@ -95,7 +95,7 @@ class EntropyMonitor(FileSystemEventHandler):
             rabbitmq_handler.send_msg(filename, entropy, "MODIFY")
 
     def on_created(self, event):
-        if config.IS_LOCKED_DOWN or event.is_directory:
+        if config.IS_LOCKED_DOWN or getattr(config, "IS_RECOVERING", False) or event.is_directory:
             return
         filename = event.src_path
         if self._should_ignore(filename):
@@ -111,7 +111,7 @@ class EntropyMonitor(FileSystemEventHandler):
             rabbitmq_handler.send_msg(filename, entropy, "CREATE")
 
     def on_deleted(self, event):
-        if config.IS_LOCKED_DOWN or event.is_directory:
+        if config.IS_LOCKED_DOWN or getattr(config, "IS_RECOVERING", False) or event.is_directory:
             return
         filename = event.src_path
         if self._should_ignore(filename):

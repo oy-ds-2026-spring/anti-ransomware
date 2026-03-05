@@ -133,3 +133,61 @@ class SnapshotDB:
     def delete_command(self, command_id: str) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM snapshot_results WHERE command_id = ?", (command_id,))
+
+    def get_latest_success_snapshot(
+        self,
+        allowed_clients: Optional[set] = None,
+        require_snapshot_id: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Latest successful snapshot record (status='DONE').
+
+        If allowed_clients is provided, only consider those client_id.
+        If require_snapshot_id is True, restic_snapshot_id must be non-empty.
+
+        Returns:
+          {
+            "command_id": "...",
+            "client_id": "finance2",
+            "restic_snapshot_id": "...",
+            "created_ts": 1234567890
+          }
+        or None.
+        """
+        client_clause = ""
+        params: list = []
+
+        if allowed_clients:
+            allowed_list = sorted(allowed_clients)
+            placeholders = ",".join(["?"] * len(allowed_list))
+            client_clause = f" AND client_id IN ({placeholders})"
+            params.extend(allowed_list)
+
+        snap_clause = ""
+        if require_snapshot_id:
+            snap_clause = " AND restic_snapshot_id IS NOT NULL AND restic_snapshot_id != ''"
+
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"""
+                SELECT command_id, client_id, restic_snapshot_id, created_ts
+                FROM snapshot_results
+                WHERE status = 'DONE'
+                  {snap_clause}
+                  {client_clause}
+                ORDER BY created_ts DESC, id DESC
+                LIMIT 1
+                """,
+                tuple(params),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+
+            command_id, client_id, snap_id, ts = row
+            return {
+                "command_id": command_id,
+                "client_id": client_id,
+                "restic_snapshot_id": snap_id,
+                "created_ts": int(ts),
+            }

@@ -19,30 +19,30 @@ services:
       retries: 5
 
   # Zookeeper (for Kafka)
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
-    container_name: zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    networks:
-      - ransom_net
+  # zookeeper:
+  #   image: confluentinc/cp-zookeeper:7.4.0
+  #   container_name: zookeeper
+  #   environment:
+  #     ZOOKEEPER_CLIENT_PORT: 2181
+  #     ZOOKEEPER_TICK_TIME: 2000
+  #   networks:
+  #     - ransom_net
 
   # Kafka
-  kafka:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: kafka
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    networks:
-      - ransom_net
+  # kafka:
+  #   image: confluentinc/cp-kafka:7.4.0
+  #   container_name: kafka
+  #   depends_on:
+  #     - zookeeper
+  #   ports:
+  #     - "9092:9092"
+  #   environment:
+  #     KAFKA_BROKER_ID: 1
+  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  #   networks:
+  #     - ransom_net
 
   # Kerberos KDC Server
   kdc-server:
@@ -64,6 +64,8 @@ services:
     build: .
     container_name: detection-service
     command: python -m detection.detection
+    ports:
+      - "4020:4020"
     volumes:
       - .:/app  # mount current source code; changes take effect after restart
       - ./shared_logs:/logs
@@ -90,7 +92,9 @@ services:
   backup-storage:
     build: .
     container_name: backup-storage
-    command: python ./recovery/backup_server.py
+    command: python -m recovery.backup_server
+    expose:
+      - "50052" # Expose the new gRPC port
     environment:
       - KRB5_CONFIG=/etc/krb5.conf
       - KRB5_KTNAME=/keytabs/backup-storage.keytab
@@ -99,6 +103,8 @@ services:
       - ./kerberos/krb5.conf:/etc/krb5.conf:ro
       - keytabs:/keytabs:ro
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       kdc-server:
         condition: service_healthy
     networks:
@@ -127,7 +133,7 @@ services:
       - CLIENT_ID=finance1
       - MONITOR_DIR=/data
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance4:4321
-      - RESTIC_REPOSITORY=rest:http://finance1:12345678@rest-server:8000/finance1/finance1
+      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
       - KRB5_CONFIG=/etc/krb5.conf
       - KRB5_KTNAME=/keytabs/finance1.keytab
@@ -157,7 +163,7 @@ services:
       sh -lc '
         set -e;
         echo "[client] checking restic repo...";
-        restic snapshots >/dev/null 2>&1 || restic init;
+        restic snapshots >/dev/null 2>&1 || echo "[client] repo not ready yet";
         echo "[client] restic repo ok";
         exec python -m client.client_server
       '
@@ -168,7 +174,7 @@ services:
       - CLIENT_ID=finance2
       - MONITOR_DIR=/data
       - PEERS=client-finance1:4321,client-finance3:4321,client-finance4:4321
-      - RESTIC_REPOSITORY=rest:http://finance2:12345678@rest-server:8000/finance2/finance2
+      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
       - KRB5_CONFIG=/etc/krb5.conf
       - KRB5_KTNAME=/keytabs/finance2.keytab
@@ -198,7 +204,7 @@ services:
       sh -lc '
         set -e;
         echo "[client] checking restic repo...";
-        restic snapshots >/dev/null 2>&1 || restic init;
+        restic snapshots >/dev/null 2>&1 || echo "[client] repo not ready yet";
         echo "[client] restic repo ok";
         exec python -m client.client_server
       '
@@ -209,7 +215,7 @@ services:
       - CLIENT_ID=finance3
       - MONITOR_DIR=/data
       - PEERS=client-finance1:4321,client-finance2:4321,client-finance4:4321
-      - RESTIC_REPOSITORY=rest:http://finance3:12345678@rest-server:8000/finance3/finance3
+      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
       - KRB5_CONFIG=/etc/krb5.conf
       - KRB5_KTNAME=/keytabs/finance3.keytab
@@ -239,7 +245,7 @@ services:
       sh -lc '
         set -e;
         echo "[client] checking restic repo...";
-        restic snapshots >/dev/null 2>&1 || restic init;
+        restic snapshots >/dev/null 2>&1 || echo "[client] repo not ready yet";
         echo "[client] restic repo ok";
         exec python -m client.client_server
       '
@@ -250,7 +256,7 @@ services:
       - CLIENT_ID=finance4
       - MONITOR_DIR=/data
       - PEERS=client-finance2:4321,client-finance3:4321,client-finance1:4321
-      - RESTIC_REPOSITORY=rest:http://finance4:12345678@rest-server:8000/finance4/finance4
+      - RESTIC_REPOSITORY=rest:http://finance:12345678@rest-server:8000/finance/finance
       - RESTIC_PASSWORD_FILE=/run/secrets/restic_repo_pass
       - KRB5_CONFIG=/etc/krb5.conf
       - KRB5_KTNAME=/keytabs/finance4.keytab
@@ -301,7 +307,7 @@ services:
   finance-gateway:
     build: .
     container_name: finance-gateway
-    command: python ./gateway/gateway.py
+    command: python -m gateway.gateway_server
     ports:
       - "9000:9000" # gateway swagger
     environment:
@@ -315,6 +321,10 @@ services:
     depends_on:
       kdc-server:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      detection-service:
+        condition: service_started
     networks:
       - ransom_net
 
@@ -343,6 +353,7 @@ services:
 
 networks:
   ransom_net:
+    name: ransom_net
     driver: bridge
 
 # run-time shared folder

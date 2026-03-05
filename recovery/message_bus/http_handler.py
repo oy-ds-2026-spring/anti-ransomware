@@ -2,15 +2,13 @@ from flask import Flask, request, jsonify
 import json
 import os
 import csv
-
 app = Flask(__name__)
 
-FILE_OPERATION_LOG = "/logs/recovery_archive.csv"
-
-
 @app.route("/")
-def home():
-    return "hello"
+def index():
+    return "Backup Server Coordinator"
+
+FILE_OPERATION_LOG = "/logs/recovery_archive.csv"
 
 
 # after every write operation, archive log for later backup
@@ -31,8 +29,3 @@ def archive():
         return jsonify({"status": "archived"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-if __name__ == "__main__":
-    print("recovery listening")
-    app.run(host="0.0.0.0", port=8080)

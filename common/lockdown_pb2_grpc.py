@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from common import lockdown_pb2 as lockdown__pb2
+import common.lockdown_pb2 as lockdown__pb2
 
 
 class LockdownServiceStub(object):
@@ -19,6 +19,11 @@ class LockdownServiceStub(object):
                 request_serializer=lockdown__pb2.LockdownRequest.SerializeToString,
                 response_deserializer=lockdown__pb2.LockdownResponse.FromString,
                 )
+        self.TriggerUnlock = channel.unary_unary(
+                '/common.LockdownService/TriggerUnlock',
+                request_serializer=lockdown__pb2.UnlockRequest.SerializeToString,
+                response_deserializer=lockdown__pb2.UnlockResponse.FromString,
+                )
 
 
 class LockdownServiceServicer(object):
@@ -31,6 +36,12 @@ class LockdownServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def TriggerUnlock(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_LockdownServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -38,6 +49,11 @@ def add_LockdownServiceServicer_to_server(servicer, server):
                     servicer.TriggerLockdown,
                     request_deserializer=lockdown__pb2.LockdownRequest.FromString,
                     response_serializer=lockdown__pb2.LockdownResponse.SerializeToString,
+            ),
+            'TriggerUnlock': grpc.unary_unary_rpc_method_handler(
+                    servicer.TriggerUnlock,
+                    request_deserializer=lockdown__pb2.UnlockRequest.FromString,
+                    response_serializer=lockdown__pb2.UnlockResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -63,5 +79,22 @@ class LockdownService(object):
         return grpc.experimental.unary_unary(request, target, '/common.LockdownService/TriggerLockdown',
             lockdown__pb2.LockdownRequest.SerializeToString,
             lockdown__pb2.LockdownResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def TriggerUnlock(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/common.LockdownService/TriggerUnlock',
+            lockdown__pb2.UnlockRequest.SerializeToString,
+            lockdown__pb2.UnlockResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
