@@ -66,7 +66,7 @@ def auth_required(f):
 
 
 @app.route("/health", methods=["GET"])
-@auth_required
+# @auth_required
 def get_cluster_health(**kwargs):
     """Endpoint for Gateway or Recovery node to ask for cluster status"""
     return jsonify(client_health), 200
