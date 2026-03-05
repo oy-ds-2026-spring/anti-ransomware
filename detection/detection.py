@@ -281,6 +281,10 @@ def handle_malware(ch, client_id, file_path, entropy):
 
 # trigger lockdown if score breaches certain level
 def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
+    # once locked we no longer update the score or state; the recovery
+    # sequence will be triggered once and additional messages are ignored
+    if profile.get("state") == "Locked":
+        return
 
     profile["score"] += calculate_score(
         profile, entropy, file_path, event_type
@@ -291,7 +295,7 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
 
     score = profile["score"]
 
-    if score >= LOCKDOWN_SCORE and profile["state"] != "Locked":
+    if score >= LOCKDOWN_SCORE:
         profile["state"] = "Locked"
         handle_malware(ch, client_id, file_path, entropy)
         log_client_status(client_id, "Infected", entropy,
@@ -366,7 +370,7 @@ def msg_callback(ch, method, properties, body):
         Logger.analyze(f" {client_id} | {file_path} | {event_type} | Entropy: {entropy:.2f}")
         
         # test vector clock
-        print(f"[{client_id}] | {event_type} | {os.path.basename(file_path)} | Entropy: {entropy:.2f} | Clock: {v_clock}")
+        # print(f"[{client_id}] | {event_type} | {os.path.basename(file_path)} | Entropy: {entropy:.2f} | Clock: {v_clock}")
 
         if event_type == "LOCK_DOWN":
             status = "Locked"
@@ -375,8 +379,10 @@ def msg_callback(ch, method, properties, body):
             )
             return
 
-        profile = get_profile(client_id)
-
+        profile = get_profile(client_id)        # once a client is locked we ignore further file events until recovery
+        if profile.get("state") == "Locked":
+            Logger.warning(f"Dropping event from locked client {client_id}: {file_path}")
+            return
         update_entropy_window(profile, entropy)
 
         update_escalation(
