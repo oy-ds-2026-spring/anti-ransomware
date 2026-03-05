@@ -7,7 +7,13 @@ import time
 import sys
 import grpc
 import threading
+import subprocess
 from flask import Flask, jsonify
+
+try:
+    from flask_gssapi import GSSAPI
+except ImportError:
+    GSSAPI = None
 
 from common import lockdown_pb2, backup_pb2_grpc, backup_pb2
 from common import lockdown_pb2_grpc
@@ -19,6 +25,7 @@ from logger import Logger
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")  # for DNS addressing
 LOG_FILE = "/logs/system_state.json"  # host machine `shared_logs/` -> docker `logs/`
+CLIENT_ID = os.getenv("CLIENT_ID", "detection")
 # ENTROPY_THRESHOLD = 7.5
 # FINANCE_NODES = ["finance1", "finance2", "finance3", "finance4"]
 
@@ -45,9 +52,22 @@ client_health = {
 
 app = Flask(__name__)
 
+if GSSAPI:
+    app.config["GSSAPI_SPNEGO"] = True
+    gss_auth = GSSAPI(app)
+else:
+    gss_auth = None
+
+
+def auth_required(f):
+    if gss_auth:
+        return gss_auth.require_auth()(f)
+    return f
+
 
 @app.route("/health", methods=["GET"])
-def get_cluster_health():
+@auth_required
+def get_cluster_health(**kwargs):
     """Endpoint for Gateway or Recovery node to ask for cluster status"""
     return jsonify(client_health), 200
 
@@ -309,7 +329,9 @@ def handle_malware(ch, client_id, file_path, entropy):
     #         log_client_status(node, "Locked", 0, "System Lockdown Initiated")
     # trigger lockdown on the infected node itself
     trigger_client_lockdown(
-        client_id, threat_id, reason=f"High entropy threshold breached on {client_id}"
+        client_id,
+        threat_id,
+        reason=f"High entropy threshold breached on {client_id}",
     )
     log_command_lock_down(client_id, timestamp)
     log_client_status(client_id, "Locked", entropy, "System Lockdown Initiated")
@@ -399,7 +421,9 @@ def recovery_sequence(client_id):
             client_id, "Recovering", 0, "Unlock successful. Restoring data."
         )
     else:
-        Logger.error(f"[{client_id}] Unlock failed! Recovery may fail due to OS locks.")
+        Logger.error(
+            f"[{client_id}] Unlock failed! Recovery may fail due to OS locks."
+        )
 
     # 2. START RECOVERY via gRPC
     trigger_recovery()
@@ -458,6 +482,19 @@ def msg_callback(ch, method, properties, body):
 
 def main():
     Logger.info("Detection Service Starting...")
+
+    # initialize kerberos ##############################################
+    keytab_file = f"/keytabs/{CLIENT_ID}.keytab"
+    for _ in range(15):
+        if os.path.exists(keytab_file):
+            try:
+                # (cmd) `kinit`: register and get auth ticket from KDC, keytab_file as the id card.
+                subprocess.run(["kinit", "-kt", keytab_file, CLIENT_ID], check=True)
+                Logger.done("🔑 Kerberos ticket initialized.")
+                break
+            except Exception as e:
+                Logger.warning(f"🔑 Kerberos init failed: {e}")
+        time.sleep(2)
 
     threading.Thread(target=run_health_api, daemon=True).start()
 
