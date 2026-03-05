@@ -63,14 +63,14 @@ services:
   detection-service:
     build: .
     container_name: detection-service
-    hostname: detection
+    hostname: detection-service
     command: python -m detection.detection
     ports:
       - "4020:4020"
     environment:
-      - CLIENT_ID=detection
+      - CLIENT_ID=detection-service
       - KRB5_CONFIG=/etc/krb5.conf
-      - KRB5_KTNAME=/keytabs/detection.keytab
+      - KRB5_KTNAME=/keytabs/detection-service.keytab
     volumes:
       - .:/app  # mount current source code; changes take effect after restart
       - ./shared_logs:/logs

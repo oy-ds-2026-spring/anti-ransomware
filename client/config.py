@@ -52,3 +52,11 @@ DEDUP_LIMIT = 10000
 DEDUP_SEEN = set()
 DEDUP_QUEUE = collections.deque()
 DEDUP_LOCK = threading.Lock()
+
+
+try:
+    from requests_gssapi import HTTPSPNEGOAuth
+except ImportError:
+    HTTPSPNEGOAuth = None
+
+krb_auth = HTTPSPNEGOAuth() if HTTPSPNEGOAuth else None

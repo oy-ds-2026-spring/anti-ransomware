@@ -25,7 +25,7 @@ from logger import Logger
 
 BROKER_HOST = os.getenv("BROKER_HOST", "rabbitmq")  # for DNS addressing
 LOG_FILE = "/logs/system_state.json"  # host machine `shared_logs/` -> docker `logs/`
-CLIENT_ID = os.getenv("CLIENT_ID", "detection")
+CLIENT_ID = os.getenv("CLIENT_ID", "detection-service")
 # ENTROPY_THRESHOLD = 7.5
 # FINANCE_NODES = ["finance1", "finance2", "finance3", "finance4"]
 

@@ -12,7 +12,7 @@ from client import utils
 from logger import Logger
 from client.utils import is_duplicate_request
 
-from client.routes import krb_auth
+from client.config import krb_auth
 
 # offline outbox
 OFFLINE_QUEUE_FILE = os.path.join(config.MONITOR_DIR, f"offline_{config.CLIENT_ID}.json")
