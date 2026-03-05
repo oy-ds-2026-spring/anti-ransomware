@@ -22,13 +22,20 @@ def save_state():
 
 
 def load_state():
-    """Load client state from file"""
+    """Load client state from file
+
+    Only the lockdown flag is persistent.  Recovery is an ephemeral
+    process that should not survive a restart, so we deliberately avoid
+    restoring ``IS_RECOVERING``.  Loading the previous recovery state
+    caused the monitor to ignore all file events indefinitely.
+    """
     try:
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, "r") as f:
                 state = json.load(f)
                 config.IS_LOCKED_DOWN = state.get("IS_LOCKED_DOWN", False)
-                config.IS_RECOVERING = state.get("IS_RECOVERING", False)
+                # reset recovering unconditionally
+                config.IS_RECOVERING = False
                 Logger.info(f"Loaded state: IS_LOCKED_DOWN={config.IS_LOCKED_DOWN}, IS_RECOVERING={config.IS_RECOVERING}")
                 return True
     except Exception as e:
