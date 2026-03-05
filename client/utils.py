@@ -50,12 +50,18 @@ def calculate_entropy(data):
 
 # local IO
 def local_create(filename, content):
+    # forbid writes when the node is locked down
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        raise PermissionError("System is locked down, create operation denied")
     filepath = os.path.join(config.MONITOR_DIR, filename)
     with open(filepath, "w") as f:
         f.write(content)
 
 
 def local_write(filename, content):
+    # forbid writes when the node is locked down
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        raise PermissionError("System is locked down, write operation denied")
     filepath = os.path.join(config.MONITOR_DIR, filename)
     with open(filepath, "a") as f:
         f.write(content)
@@ -64,6 +70,9 @@ def local_write(filename, content):
 
 
 def local_delete(filename):
+    # forbid deletions when the node is locked down
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        raise PermissionError("System is locked down, delete operation denied")
     filepath = os.path.join(config.MONITOR_DIR, filename)
     if os.path.exists(filepath):
         os.remove(filepath)

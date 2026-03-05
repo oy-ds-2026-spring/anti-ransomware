@@ -123,7 +123,10 @@ def log_client_status(client_id, status, entropy, message):
     # 2. last_entropy
     current_state["last_entropy"] = entropy
 
-    # 3. Update logs (keep only the latest 10 entries)
+    # 3. Update health registry to keep /health endpoint in sync
+    update_health_registry(client_id, status=status, entropy=entropy)
+
+    # 4. Update logs (keep only the latest 10 entries)
     timestamp = time.strftime("%H:%M:%S")
     log_entry = f"[{timestamp}] {message}"
     current_state["logs"].append(log_entry)
@@ -316,7 +319,6 @@ def handle_malware(ch, client_id, file_path, entropy):
     Logger.ransomware(alert_msg)
 
     log_client_status(client_id, "Infected", entropy, alert_msg)
-    update_health_registry(client_id, status="Infected", entropy=entropy)
 
     # send lock down command
     timestamp = time.strftime("%H:%M:%S")
@@ -341,6 +343,10 @@ def handle_malware(ch, client_id, file_path, entropy):
 
 # trigger lockdown if score breaches certain level
 def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
+    # once locked or recovering we no longer update the score or state; the recovery
+    # sequence will be triggered once and additional messages are ignored
+    if profile.get("state") in ["Locked", "Recovering"]:
+        return
 
     profile["score"] += calculate_score(profile, entropy, file_path, event_type)
 
@@ -350,21 +356,20 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
     score = profile["score"]
 
     if score >= LOCKDOWN_SCORE:
-        if profile["state"] != "Locked":
+        if profile["state"] not in ["Locked", "Recovering"]:
             profile["state"] = "Locked"
             handle_malware(ch, client_id, file_path, entropy)
             log_client_status(
                 client_id, "Infected", entropy, "High ransomware confidence"
             )
     elif score >= SUSPICIOUS_SCORE:
-        if profile["state"] != "Locked":
+        if profile["state"] not in ["Locked", "Recovering"]:
             profile["state"] = "Suspicious"
             log_client_status(
                 client_id, "Suspicious", entropy, "Abnormal behaviour detected"
             )
-            update_health_registry(client_id, status="Suspicious", entropy=entropy)
     else:
-        if profile["state"] != "Locked":
+        if profile["state"] not in ["Locked", "Recovering"]:
             profile["state"] = "Safe"
             log_client_status(
                 client_id,
@@ -372,7 +377,6 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
                 entropy,
                 f"Normal activity: {os.path.basename(file_path)}",
             )
-            update_health_registry(client_id, status="Safe", entropy=entropy)
 
 
 # recovery trigger logic
@@ -416,7 +420,9 @@ def recovery_sequence(client_id):
         client_id, threat_id, "Automated pre-recovery unlock"
     )
 
+    profile = get_profile(client_id)
     if unlock_success:
+        profile["state"] = "Recovering"
         log_client_status(
             client_id, "Recovering", 0, "Unlock successful. Restoring data."
         )
@@ -428,12 +434,15 @@ def recovery_sequence(client_id):
     # 2. START RECOVERY via gRPC
     trigger_recovery()
 
-    # 3. remove lock record, restore node status (or else the node will always be locked with a high score)
-    profile = get_profile(client_id)
+    # 3. Wait for recovery to complete (assume 30 seconds)
+    Logger.info(f"[{client_id}] Waiting for recovery to complete...")
+    time.sleep(30)
+
+    # 4. remove lock record, restore node status (or else the node will always be locked with a high score)
     profile["score"] = 0
     profile["state"] = "Safe"
     update_health_registry(client_id, status="Safe", entropy=0.0)
-    log_client_status(client_id, "Safe", 0.0, "Recovery initiated, state reset.")
+    log_client_status(client_id, "Safe", 0.0, "Recovery completed, state reset.")
 
 
 # msg process
@@ -457,9 +466,7 @@ def msg_callback(ch, method, properties, body):
         )
 
         # test vector clock
-        print(
-            f"[{client_id}] | {event_type} | {os.path.basename(file_path)} | Entropy: {entropy:.2f} | Clock: {v_clock}"
-        )
+        # print(f"[{client_id}] | {event_type} | {os.path.basename(file_path)} | Entropy: {entropy:.2f} | Clock: {v_clock}")
 
         if event_type == "LOCK_DOWN":
             status = "Locked"
@@ -471,8 +478,10 @@ def msg_callback(ch, method, properties, body):
             )
             return
 
-        profile = get_profile(client_id)
-
+        profile = get_profile(client_id)        # once a client is locked we ignore further file events until recovery
+        if profile.get("state") in ["Locked", "Recovering"]:
+            Logger.warning(f"Dropping event from {profile.get('state').lower()} client {client_id}: {file_path}")
+            return
         update_entropy_window(profile, entropy)
 
         update_escalation(client_id, profile, entropy, file_path, event_type, ch)

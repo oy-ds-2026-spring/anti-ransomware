@@ -145,6 +145,11 @@ def _get_channel():
 
 def send_msg(file_path, entropy, event_type):
     try:
+        # do not send new file events while locked down
+        if getattr(config, "IS_LOCKED_DOWN", False):
+            Logger.warning(f"[LOCKDOWN] dropping event {file_path}"
+                           f" because node is locked")
+            return
         # init short connection for every sending
         connection, channel = _get_channel()
         channel.queue_declare(queue="file_events")
