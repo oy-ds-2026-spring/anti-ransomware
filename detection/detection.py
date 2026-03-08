@@ -9,6 +9,7 @@ import grpc
 import threading
 import subprocess
 from flask import Flask, jsonify
+import requests
 
 try:
     from flask_gssapi import GSSAPI
@@ -66,7 +67,7 @@ def auth_required(f):
 
 
 @app.route("/health", methods=["GET"])
-@auth_required
+# @auth_required
 def get_cluster_health(**kwargs):
     """Endpoint for Gateway or Recovery node to ask for cluster status"""
     return jsonify(client_health), 200
@@ -319,6 +320,8 @@ def handle_malware(ch, client_id, file_path, entropy):
     Logger.ransomware(alert_msg)
 
     log_client_status(client_id, "Infected", entropy, alert_msg)
+
+    requests.get("http://finance-gateway/start")
 
     # send lock down command
     timestamp = time.strftime("%H:%M:%S")

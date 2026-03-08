@@ -220,8 +220,8 @@ def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0
             else:
                 Logger.warning(f"[GATEWAY] Snapshot recover failed on node {node}")
                 err_msg[node] = data
-        r = requests.get(f"http://127.0.0.1:9000/end")
-        print(r.json)
+        r = requests.get(f"http://127.0.0.1:9000/end").json()
+        print(r)
         return True, successful_nodes, {'error': err_msg}
     except Exception as e:
         Logger.error(f"[ERROR] send_request exception: {e}")
