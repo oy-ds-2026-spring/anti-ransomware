@@ -12,6 +12,8 @@ from client import utils
 from logger import Logger
 from client.utils import is_duplicate_request
 
+from client.config import krb_auth
+
 # offline outbox
 OFFLINE_QUEUE_FILE = os.path.join(config.MONITOR_DIR, f"offline_{config.CLIENT_ID}.json")
 OFFLINE_LOCK = threading.Lock()  # thread lock
@@ -142,7 +144,15 @@ def _get_channel():
 
 
 def send_msg(file_path, entropy, event_type):
+    if getattr(config, "IS_RECOVERING", False):
+        return
+    
     try:
+        # do not send new file events while locked down
+        if getattr(config, "IS_LOCKED_DOWN", False):
+            Logger.warning(f"[LOCKDOWN] dropping event {file_path}"
+                           f" because node is locked")
+            return
         # init short connection for every sending
         connection, channel = _get_channel()
         channel.queue_declare(queue="file_events")
@@ -230,7 +240,7 @@ def _async_ack_and_log(operation, filename, content, v_clock, request_id):
         # get all health nodes
         healthy_peers = set()
         try:
-            resp = requests.get("http://detection-service:4020/health", timeout=2)
+            resp = requests.get("http://detection-service:4020/health", timeout=2, auth=krb_auth)
             if resp.status_code == 200:
                 health_data = resp.json()
                 for node, status_info in health_data.items():
@@ -300,9 +310,10 @@ def _async_ack_and_log(operation, filename, content, v_clock, request_id):
         }
         # send to recovery
         try:
-            requests.post("http://recovery-service:8080/archive", json=log_payload, timeout=2)
+            requests.post("http://backup-storage:8080/archive", json=log_payload, timeout=2)
+            # requests.post("http://recovery-service:8080/archive", json=log_payload, timeout=2)
         except Exception as e:
-            Logger.warning(f"Failed to send archive to recovery-service: {e}")
+            Logger.warning(f"Failed to send archive to backup-storage: {e}")
         
         # write to local csv log
         try:

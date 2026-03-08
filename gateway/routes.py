@@ -138,6 +138,23 @@ def _send_to_any(endpoint, method="POST", json_data=None, timeout=3):
     
     raise last_error if last_error else Exception("All finance nodes are down")
   
+@app.route("/health", methods=["GET"])
+def test_health():
+    """
+    Test the health of the detection service.
+    ---
+    tags:
+      - Health
+    responses:
+      200:
+        description: Returns the health status of the detection service.
+    """
+    try:
+        resp = requests.get("http://detection-service:4020/health", timeout=2, auth=krb_auth)
+        return resp.json(), resp.status_code
+    except Exception as e:
+        return {"error": str(e)}, 500
+
 
 # route to finance1234 node
 @app.route("/finance/read", methods=["POST"])
@@ -211,6 +228,9 @@ def write_op():
       500:
         description: Internal server error
     """
+    json_data = request.get_json() or {}
+    custom_req_id = json_data.pop("request_id", None)
+    
     try:
         req = WriteReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -220,7 +240,7 @@ def write_op():
     try:
         # give global unique ID to a write request
         payload = asdict(req)
-        payload["request_id"] = str(uuid.uuid4())
+        payload["request_id"] = custom_req_id or str(uuid.uuid4())
         Logger.info(payload["request_id"])
         
         resp = _send_to_any("/write", method="POST", json_data=payload)
@@ -260,6 +280,10 @@ def create_op():
       500:
         description: Internal server error
     """
+    # for eval: if have custom request_id
+    json_data = request.get_json() or {}
+    custom_req_id = json_data.pop("request_id", None)
+    
     try:
         req = CreateReq(**request.get_json())
     except (TypeError, AttributeError):
@@ -267,7 +291,7 @@ def create_op():
     try:
         # give global unique ID to a write request
         payload = asdict(req)
-        payload["request_id"] = str(uuid.uuid4())
+        payload["request_id"] = custom_req_id or str(uuid.uuid4())
         resp = _send_to_any("/create", method="POST", json_data=payload)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:

@@ -18,10 +18,6 @@ try:
 except ImportError:
     GSSAPI = None
 
-try:
-    from requests_gssapi import HTTPSPNEGOAuth
-except ImportError:
-    HTTPSPNEGOAuth = None
 
 from client import config
 from client import utils
@@ -31,6 +27,7 @@ from client.security import execute_unlock
 from client.snapshot import start_snapshot, start_restore
 from logger import Logger
 from client.utils import is_duplicate_request
+from client.config import krb_auth
 
 app = Flask(__name__)
 Swagger(app)
@@ -42,15 +39,14 @@ if GSSAPI:  # if no lib is installed, it's a dev env, don't user kerberos
 else:
     gss_auth = None
 
-krb_auth = HTTPSPNEGOAuth() if HTTPSPNEGOAuth else None
-
 # close kerberos auth if dev env
 def auth_required(f):
     if gss_auth:
         return gss_auth.require_auth()(f)
     return f
 
-
+# unused method
+# included by _async_ack_and_log(operation, filename, content, v_clock, request_id) in rabbitmq_handler.py 
 def _log_and_archive(filename, operation, req_id, appended=""):
     """log locally and notify recovery service"""
 
@@ -74,12 +70,14 @@ def _log_and_archive(filename, operation, req_id, appended=""):
             writer.writerow(log_entry)
 
         # notify recovery service
-        requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
+        requests.post("http://backup-storage:8080/archive", json=log_entry, timeout=2)
+        # requests.post("http://recovery-service:8080/archive", json=log_entry, timeout=2)
     except Exception as e:
         Logger.warning(f"Logging/Archive failed: {e}")
 
 
 def _run_encryption(monitor_dir, client_id):
+    # If lockdown already in place, abort immediately
     if getattr(config, "IS_LOCKED_DOWN", False):
         Logger.warning(f"Attack blocked: {client_id} is locked down!")
         return
@@ -88,22 +86,32 @@ def _run_encryption(monitor_dir, client_id):
         for file in files:
             filepath = os.path.join(root, file)
 
-            # Check shared memory flag before touching the file
+            # stop if lockdown triggered during the run
             if getattr(config, "IS_LOCKED_DOWN", False):
                 Logger.lock_down("Lockdown activated mid-encryption. Stopping attack.")
                 return
 
             try:
-                if not os.access(root, os.W_OK):
-                    Logger.lock_down(f"OS physical block: cannot write to {root}")
-                    return
+                # we don't rely on os.access since the process may run as root
+                # permission checks above are best-effort; enforcement is done via
+                # the shared lockdown flag and by changing file modes in execute_lockdown
 
                 # Fake encryption
                 with open(filepath, "rb") as f:
                     data = f.read()
 
+                # if locked down happened while reading, break out
+                if getattr(config, "IS_LOCKED_DOWN", False):
+                    Logger.lock_down("Lockdown detected after read; aborting.")
+                    return
+
                 with open(filepath, "wb") as f:
                     f.write(os.urandom(len(data)))
+
+                # check one more time before renaming
+                if getattr(config, "IS_LOCKED_DOWN", False):
+                    Logger.lock_down("Lockdown detected after write; aborting without rename.")
+                    return
 
                 os.rename(filepath, filepath + ".locked")
                 Logger.encrypted(f"{file}")
@@ -218,6 +226,23 @@ def snapshot_start():
     return jsonify({"status": "success", "snapshot_id": restic_snap_id}), 200
 
 
+@app.route("/health", methods=["GET"])
+def test_health():
+    """
+    Test the health of the detection service.
+    ---
+    tags:
+      - Health
+    responses:
+      200:
+        description: Returns the health status of the detection service.
+    """
+    try:
+        resp = requests.get("http://detection-service:4020/health", timeout=2, auth=krb_auth)
+        return resp.json(), resp.status_code
+    except Exception as e:
+        return {"error": str(e)}, 500
+
 @app.route("/snapshot/commit", methods=["POST"])
 def snapshot_commit():
     """
@@ -236,19 +261,29 @@ def snapshot_commit():
 
 @app.route("/snapshot/recover", methods=["POST"])
 def snapshot_recover():
-    print("[INFO] Received snapshot recover request.")
-    data = request.get_json(silent=True) or {}
-    snapshot_id = data.get("clean_snapshot_id")
-    print("[INFO] Recovering to snapshot: ", snapshot_id)
+    config.IS_RECOVERING = True
+    execute_unlock(trigger_source="Recovery Engine", reason="OS write permission for Restic")
+    
+    try:
+        print("[INFO] Received snapshot recover request.")
+        data = request.get_json(silent=True) or {}
+        snapshot_id = data.get("clean_snapshot_id")
+        print("[INFO] Recovering to snapshot: ", snapshot_id)
 
-    if not snapshot_id:
-        return jsonify({"ok": False, "error": "missing snapshot_id"}), 400
+        if not snapshot_id:
+            return jsonify({"ok": False, "error": "missing snapshot_id"}), 400
 
-    ok, message =  start_restore(snapshot_id=snapshot_id)
-    if ok:
-        return jsonify({"status": "successful"}), 200
-    else:
-        return jsonify({"status": "error", "message": message}), 500
+        ok, message =  start_restore(snapshot_id=snapshot_id)
+        if ok:
+            return jsonify({"status": "successful"}), 200
+        else:
+            return jsonify({"status": "error", "message": message}), 500
+    
+    finally:
+        print("[INFO] Restored. Waiting 3 seconds for MQ sync queue to flush poison messages...")
+        time.sleep(3)
+        config.IS_RECOVERING = False
+        print("[INFO] Recovery shield deactivated. Node ready for sync.")
 
 
 @app.route("/snapshot/data", methods=["GET"])
@@ -361,12 +396,16 @@ def create_file(**kwargs):
       500:
         description: Internal server error
     """
+    # deny when locked down
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        return jsonify(Response(status="error", message="System is locked down").to_dict()), 403
+
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
     
     # check double-write
     json_data = request.get_json() or {}
-    req_id = json_data.get("request_id") # Uuid generated by gateway
-    if is_duplicate_request(json_data.pop("request_id", None)): # pop to clean data for model `CreateReq`
+    req_id = json_data.get("request_id", None) # Uuid generated by gateway
+    if req_id and is_duplicate_request(json_data.pop("request_id", None)): # pop to clean data for model `CreateReq`
         return jsonify(Response(status="success", message="Request already processed (idempotent)").to_dict())
 
     try:
@@ -381,7 +420,7 @@ def create_file(**kwargs):
         # broadcast to others via RabbitMQ
         rabbitmq_handler.broadcast_sync("CREATE", req.filename, content=req.content, v_clock=current_clock, request_id=req_id)
 
-        _log_and_archive(req.filename, "CREATE", req_id, req.content)
+        # _log_and_archive(req.filename, "CREATE", req_id, req.content)
 
         return jsonify(Response(status="success", message="File created").to_dict())
     except Exception as e:
@@ -421,12 +460,16 @@ def write_file(**kwargs):
       500:
         description: Internal server error
     """
+    # deny when locked down
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        return jsonify(Response(status="error", message="System is locked down").to_dict()), 403
+
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
 
     # check double-write
     json_data = request.get_json() or {}
-    req_id = json_data.get("request_id")
-    if is_duplicate_request(json_data.pop("request_id", None)): # pop to clean data for model
+    req_id = json_data.get("request_id", None)
+    if req_id and is_duplicate_request(json_data.pop("request_id", None)): # pop to clean data for model
         return jsonify(Response(status="success", message="Request already processed (idempotent)").to_dict())
 
     try:
@@ -480,12 +523,16 @@ def delete_file(**kwargs):
       500:
         description: Internal server error
     """
+    # deny when locked down
+    if getattr(config, "IS_LOCKED_DOWN", False):
+        return jsonify(Response(status="error", message="System is locked down").to_dict()), 403
+
     config.WRITE_PERMISSION.wait()  # Wait if snapshot is in progress
 
     # check double-write
     json_data = request.get_json() or {}
-    req_id = json_data.get("request_id")
-    if is_duplicate_request(json_data.pop("request_id", None)): # pop to clean data for model
+    req_id = json_data.get("request_id", None)
+    if req_id and is_duplicate_request(json_data.pop("request_id", None)): # pop to clean data for model
         return jsonify(Response(status="success", message="Request already processed (idempotent)").to_dict())
 
     try:
@@ -504,7 +551,7 @@ def delete_file(**kwargs):
         # broadcast to others via RabbitMQ # with clock
         rabbitmq_handler.broadcast_sync("DELETE", req.filename, v_clock=current_clock, request_id=req_id)
 
-        _log_and_archive(req.filename, "DELETE", req_id, "")
+        # _log_and_archive(req.filename, "DELETE", req_id, "")
 
         return jsonify(Response(status="success", message="File deleted").to_dict())
     except Exception as e:
