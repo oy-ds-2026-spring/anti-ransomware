@@ -144,6 +144,9 @@ def _get_channel():
 
 
 def send_msg(file_path, entropy, event_type):
+    if getattr(config, "IS_RECOVERING", False):
+        return
+    
     try:
         # do not send new file events while locked down
         if getattr(config, "IS_LOCKED_DOWN", False):

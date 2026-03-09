@@ -46,6 +46,8 @@ class EntropyMonitor(FileSystemEventHandler):
     def _should_ignore(self, filename):
         if filename.endswith(".locked") or ".tmp" in filename:
             return True
+        if "eval_concurrent.txt" in filename:
+            return True
         ext = os.path.splitext(filename)[1].lower()
         if ext in config.HIGH_ENTROPY_EXTENSIONS:
             return True
@@ -80,6 +82,10 @@ class EntropyMonitor(FileSystemEventHandler):
         if config.IS_LOCKED_DOWN or getattr(config, "IS_RECOVERING", False) or event.is_directory: 
             return
         filename = event.src_path
+        
+        if self._should_ignore(filename):
+            return
+        
         basename = os.path.basename(filename)
 
         if filename.endswith(".locked") or ".tmp" in filename:
@@ -127,9 +133,6 @@ class EntropyMonitor(FileSystemEventHandler):
                 if not self.recovery_triggered:
                     self.recovery_triggered = True
                     threading.Thread(target=self.trigger_recovery_pipeline, daemon=True).start()
-            return
-
-        if self._should_ignore(filename):
             return
 
         # sample entropy detect

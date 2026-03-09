@@ -33,7 +33,7 @@ def start_restore(snapshot_id: str):
     print("[INFO] Starting restore...")
     return restore_snapshot(
         snapshot_id=snapshot_id,
-        target_dir=MONITOR_DIR,
+        target_dir="/",
         repo_path=RESTIC_REPOSITORY,
         password_file=RESTIC_PASSWORD_FILE,
     )

@@ -280,6 +280,8 @@ def snapshot_recover():
             return jsonify({"status": "error", "message": message}), 500
     
     finally:
+        print("[INFO] Restored. Waiting 3 seconds for MQ sync queue to flush poison messages...")
+        time.sleep(3)
         config.IS_RECOVERING = False
         print("[INFO] Recovery shield deactivated. Node ready for sync.")
 
