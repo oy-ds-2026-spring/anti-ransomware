@@ -321,7 +321,10 @@ def handle_malware(ch, client_id, file_path, entropy):
 
     log_client_status(client_id, "Infected", entropy, alert_msg)
 
-    requests.get("http://finance-gateway:9000/start")
+    r = requests.get("http://finance-gateway:9000/start").json()
+    print("############")
+    print(r)
+    print("############")
 
     # send lock down command
     timestamp = time.strftime("%H:%M:%S")
