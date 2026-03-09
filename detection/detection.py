@@ -16,7 +16,7 @@ try:
 except ImportError:
     GSSAPI = None
 
-from common import lockdown_pb2, backup_pb2_grpc, backup_pb2
+from common import lockdown_pb2
 from common import lockdown_pb2_grpc
 from common import recovery_pb2
 from common import recovery_pb2_grpc
@@ -29,6 +29,7 @@ LOG_FILE = "/logs/system_state.json"  # host machine `shared_logs/` -> docker `l
 CLIENT_ID = os.getenv("CLIENT_ID", "detection-service")
 # ENTROPY_THRESHOLD = 7.5
 # FINANCE_NODES = ["finance1", "finance2", "finance3", "finance4"]
+RECOVERY_STARTED = False
 
 # global state, real-time maintained in memory, written to log after update
 # for logging, for Dashboard
@@ -388,6 +389,17 @@ def update_escalation(client_id, profile, entropy, file_path, event_type, ch):
 # recovery trigger logic
 def trigger_recovery():
     """Calls the Recovery Service via gRPC to restore the latest snapshot"""
+    # global RECOVERY_STARTED
+    #
+    # print("RECOVERY STATUS############")
+    # print(RECOVERY_STARTED)
+    # print("############")
+    #
+    # if RECOVERY_STARTED:
+    #     print("recovery process already started.")
+    #     return
+    #
+    # RECOVERY_STARTED = True
     recovery_address = "backup-storage:50052"
     Logger.info(f"Sending gRPC recovery command to {recovery_address}...")
 

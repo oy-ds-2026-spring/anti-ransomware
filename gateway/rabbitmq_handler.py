@@ -15,6 +15,7 @@ CLIENT_ID = os.getenv("CLIENT_ID", "gateway")
 QUEUE = os.getenv("SNAPSHOT_QUEUE", "regular_snapshot")
 RESULT_QUEUE = os.getenv("RESULT_QUEUE", "snapshot_results")
 RECOVERY_QUEUE = os.getenv("RECOVERY_QUEUE", "recovery_queue")
+RECOVERY_STARTED = False
 
 
 def start_connection(username, password):
@@ -117,9 +118,21 @@ def recovery_listener():
 
         try:
             if msg.get("type") == "RESTORE_REQUEST":
+                global RECOVERY_STARTED
+                #
+                # print("RECOVERY STATUS############")
+                # print(RECOVERY_STARTED)
+                # print("############")
+
+                if RECOVERY_STARTED:
+                    # print("recovery process already started.")
+                    return False, None, None
+
+                RECOVERY_STARTED = True
                 print("[INFO] got msg=", msg.get("type"))
                 clean_snapshot_id = msg.get("snapshot_id")
                 command_id = msg.get("command_id")
+                print(f"[INFO] Got message: {msg.get('type')}, command_id={msg.get('command_id')}")
                 print("[INFO] Sending Snapshot restore request...")
                 ok, successful_nodes, message = send_recovery(command_id, clean_snapshot_id)
             else:

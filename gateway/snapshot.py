@@ -1,4 +1,5 @@
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -194,14 +195,8 @@ def send_snapshot(command_id: str, timeout: float = 10.0):
 
 def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0):
 
-    # all_ready, results = prepare_all_parallel(command_id)
-    #
-    # _, healthy = health_check(all_ready, results)
-    #
-    # if not healthy:
-    #     return None, False, None, {"error": "All nodes unreachable"}
-
     print(f"[INFO] Requesting to restore with snapshot: {clean_snapshot_id}")
+    time.sleep(10)
 
     try:
         successful_nodes = []
@@ -220,8 +215,8 @@ def send_recovery(command_id: str, clean_snapshot_id: str, timeout: float = 10.0
             else:
                 Logger.warning(f"[GATEWAY] Snapshot recover failed on node {node}")
                 err_msg[node] = data
-        r = requests.get(f"http://127.0.0.1:9000/end").json()
-        print(r)
+        #r = requests.get(f"http://127.0.0.1:9000/end").json()
+        #print(r)
         return True, successful_nodes, {'error': err_msg}
     except Exception as e:
         Logger.error(f"[ERROR] send_request exception: {e}")
